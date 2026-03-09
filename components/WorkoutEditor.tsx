@@ -20,14 +20,8 @@ export function WorkoutEditor({ students, initialWorkouts, initialAssignments }:
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const studentsById = useMemo(
-    () => Object.fromEntries(students.map((student) => [student.id, student.name])),
-    [students]
-  );
-  const workoutsById = useMemo(
-    () => Object.fromEntries(workouts.map((workout) => [workout.id, workout.title])),
-    [workouts]
-  );
+  const studentsById = useMemo(() => Object.fromEntries(students.map((student) => [student.id, student.name])), [students]);
+  const workoutsById = useMemo(() => Object.fromEntries(workouts.map((workout) => [workout.id, workout.title])), [workouts]);
 
   const createWorkout = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -75,6 +69,24 @@ export function WorkoutEditor({ students, initialWorkouts, initialAssignments }:
     }
   };
 
+  const unassignWorkout = async (assignmentId: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/workout-assignments?id=${encodeURIComponent(assignmentId)}`, {
+        method: "DELETE"
+      });
+      if (!response.ok) {
+        throw new Error("No se pudo desasignar la rutina.");
+      }
+      setAssignments((prev) => prev.filter((assignment) => assignment.id !== assignmentId));
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : "Error inesperado.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <section className="grid gap-6 xl:grid-cols-2">
       <article className="card p-5">
@@ -83,14 +95,14 @@ export function WorkoutEditor({ students, initialWorkouts, initialAssignments }:
           <input
             value={workoutForm.title}
             onChange={(event) => setWorkoutForm((prev) => ({ ...prev, title: event.target.value }))}
-            placeholder="Título"
+            placeholder="Titulo"
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             required
           />
           <textarea
             value={workoutForm.description}
             onChange={(event) => setWorkoutForm((prev) => ({ ...prev, description: event.target.value }))}
-            placeholder="Descripción"
+            placeholder="Descripcion"
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             rows={4}
           />
@@ -147,7 +159,7 @@ export function WorkoutEditor({ students, initialWorkouts, initialAssignments }:
           {workouts.map((workout) => (
             <li key={workout.id} className="rounded-lg border border-slate-200 p-3">
               <h3 className="font-medium text-slate-900">{workout.title}</h3>
-              <p className="mt-1 text-sm text-slate-600">{workout.description || "Sin descripción"}</p>
+              <p className="mt-1 text-sm text-slate-600">{workout.description || "Sin descripcion"}</p>
             </li>
           ))}
         </ul>
@@ -157,11 +169,22 @@ export function WorkoutEditor({ students, initialWorkouts, initialAssignments }:
         <h2 className="text-lg font-semibold text-slate-900">Asignaciones</h2>
         <ul className="mt-4 space-y-3">
           {assignments.map((assignment) => (
-            <li key={assignment.id} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
-              <span className="text-sm text-slate-700">{studentsById[assignment.student_id] || "Alumno desconocido"}</span>
-              <span className="text-sm font-medium text-brand-700">
-                {workoutsById[assignment.workout_id] || "Rutina desconocida"}
-              </span>
+            <li key={assignment.id} className="rounded-lg border border-slate-200 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-slate-700">
+                  {studentsById[assignment.student_id] || "Alumno desconocido"}
+                </span>
+                <span className="text-sm font-medium text-brand-700">
+                  {workoutsById[assignment.workout_id] || "Rutina desconocida"}
+                </span>
+              </div>
+              <button
+                onClick={() => unassignWorkout(assignment.id)}
+                disabled={loading}
+                className="mt-3 rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700 disabled:opacity-60"
+              >
+                Desasignar
+              </button>
             </li>
           ))}
         </ul>

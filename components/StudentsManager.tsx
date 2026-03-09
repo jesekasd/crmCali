@@ -27,10 +27,26 @@ const defaultForm = (): StudentInput => ({
 export function StudentsManager({ initialStudents }: StudentsManagerProps) {
   const [students, setStudents] = useState<Student[]>(initialStudents);
   const [form, setForm] = useState<StudentInput>(defaultForm);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const activeStudents = useMemo(() => students.filter((student) => student.status === "active").length, [students]);
+
+  const filteredStudents = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    return students.filter((student) => {
+      const matchesStatus = statusFilter === "all" ? true : student.status === statusFilter;
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        student.name.toLowerCase().includes(normalizedSearch) ||
+        (student.goal ?? "").toLowerCase().includes(normalizedSearch) ||
+        student.level.toLowerCase().includes(normalizedSearch);
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [students, searchTerm, statusFilter]);
 
   const createStudent = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -84,7 +100,7 @@ export function StudentsManager({ initialStudents }: StudentsManagerProps) {
       <article className="card p-5">
         <h2 className="text-lg font-semibold text-slate-900">Nuevo alumno</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Total: {students.length} alumnos · Activos: {activeStudents}
+          Total: {students.length} alumnos - Activos: {activeStudents}
         </p>
         <form onSubmit={createStudent} className="mt-4 grid gap-3 md:grid-cols-2">
           <input
@@ -134,11 +150,38 @@ export function StudentsManager({ initialStudents }: StudentsManagerProps) {
         {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
       </article>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {students.map((student) => (
-          <StudentCard key={student.id} student={student} onSave={updateStudent} onDelete={deleteStudent} />
-        ))}
-      </div>
+      <article className="card p-5">
+        <div className="grid gap-3 md:grid-cols-[1fr_200px]">
+          <input
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            placeholder="Buscar por nombre, nivel u objetivo"
+          />
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as "all" | "active" | "inactive")}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          >
+            <option value="all">Todos los estados</option>
+            <option value="active">Solo activos</option>
+            <option value="inactive">Solo inactivos</option>
+          </select>
+        </div>
+        <p className="mt-3 text-sm text-slate-500">Resultados: {filteredStudents.length}</p>
+      </article>
+
+      {filteredStudents.length === 0 ? (
+        <article className="card p-6">
+          <p className="text-sm text-slate-600">No hay alumnos que coincidan con el filtro actual.</p>
+        </article>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filteredStudents.map((student) => (
+            <StudentCard key={student.id} student={student} onSave={updateStudent} onDelete={deleteStudent} />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

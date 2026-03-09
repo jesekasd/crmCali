@@ -5,10 +5,10 @@ import { Payment } from "@/types/domain";
 interface PaymentTableProps {
   payments: Payment[];
   studentsById: Record<string, string>;
-  onMarkPaid: (paymentId: string) => Promise<void>;
+  onUpdateStatus: (paymentId: string, status: "paid" | "pending" | "overdue") => Promise<void>;
 }
 
-export function PaymentTable({ payments, studentsById, onMarkPaid }: PaymentTableProps) {
+export function PaymentTable({ payments, studentsById, onUpdateStatus }: PaymentTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-left text-sm">
@@ -18,7 +18,7 @@ export function PaymentTable({ payments, studentsById, onMarkPaid }: PaymentTabl
             <th className="pb-2 pr-4">Monto</th>
             <th className="pb-2 pr-4">Estado</th>
             <th className="pb-2 pr-4">Fecha</th>
-            <th className="pb-2 pr-4">Accion</th>
+            <th className="pb-2 pr-4">Acciones</th>
           </tr>
         </thead>
         <tbody>
@@ -33,7 +33,9 @@ export function PaymentTable({ payments, studentsById, onMarkPaid }: PaymentTabl
                     className={
                       payment.status === "paid"
                         ? "rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700"
-                        : "rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700"
+                        : payment.status === "overdue"
+                          ? "rounded-full bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700"
+                          : "rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700"
                     }
                   >
                     {payment.status}
@@ -41,14 +43,32 @@ export function PaymentTable({ payments, studentsById, onMarkPaid }: PaymentTabl
                 </td>
                 <td className="py-2 pr-4">{payment.date}</td>
                 <td className="py-2 pr-4">
-                  {payment.status === "paid" ? null : (
-                    <button
-                      onClick={() => onMarkPaid(payment.id)}
-                      className="rounded-lg border border-brand-200 px-3 py-1 text-xs font-medium text-brand-700"
-                    >
-                      Marcar pagado
-                    </button>
-                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {payment.status !== "paid" ? (
+                      <button
+                        onClick={() => onUpdateStatus(payment.id, "paid")}
+                        className="rounded-lg border border-brand-200 px-3 py-1 text-xs font-medium text-brand-700"
+                      >
+                        Marcar pagado
+                      </button>
+                    ) : null}
+                    {payment.status !== "pending" ? (
+                      <button
+                        onClick={() => onUpdateStatus(payment.id, "pending")}
+                        className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700"
+                      >
+                        Marcar pendiente
+                      </button>
+                    ) : null}
+                    {payment.status !== "overdue" ? (
+                      <button
+                        onClick={() => onUpdateStatus(payment.id, "overdue")}
+                        className="rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700"
+                      >
+                        Marcar vencido
+                      </button>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             );
