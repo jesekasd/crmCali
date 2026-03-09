@@ -1,7 +1,7 @@
 import { StudentsManager } from "@/components/StudentsManager";
+import { listCoachStudentsPage, StudentStatusFilter } from "@/lib/coach/queries";
 import { getCoachContext } from "@/lib/supabase/api";
-import { getPaginationRange, normalizeEnumParam, normalizeTextParam, parsePageParam } from "@/lib/search-params";
-import { Student } from "@/types/domain";
+import { normalizeEnumParam, normalizeTextParam, parsePageParam } from "@/lib/search-params";
 
 const STUDENTS_PAGE_SIZE = 12;
 const STUDENT_STATUS_FILTERS = ["all", "active", "inactive"] as const;
@@ -19,28 +19,15 @@ export default async function StudentsPage({ searchParams }: StudentsPageProps) 
   const { supabase, coachId } = context;
   const page = parsePageParam(searchParams?.page);
   const search = normalizeTextParam(searchParams?.q);
-  const status = normalizeEnumParam(searchParams?.status, STUDENT_STATUS_FILTERS, "all");
-  const { from, to } = getPaginationRange(page, STUDENTS_PAGE_SIZE);
-
-  let query = supabase
-    .from("students")
-    .select("*")
-    .eq("coach_id", coachId)
-    .order("created_at", { ascending: false })
-    .range(from, to);
-
-  if (status !== "all") {
-    query = query.eq("status", status);
-  }
-
-  if (search) {
-    query = query.or(`name.ilike.%${search}%,goal.ilike.%${search}%,level.ilike.%${search}%`);
-  }
-
-  const { data } = await query;
-  const rows = (data ?? []) as Student[];
-  const students = rows.slice(0, STUDENTS_PAGE_SIZE);
-  const hasNextPage = rows.length > STUDENTS_PAGE_SIZE;
+  const status = normalizeEnumParam(searchParams?.status, STUDENT_STATUS_FILTERS, "all") as StudentStatusFilter;
+  const { items: students, hasNextPage } = await listCoachStudentsPage({
+    supabase,
+    coachId,
+    page,
+    pageSize: STUDENTS_PAGE_SIZE,
+    search,
+    status
+  });
 
   return (
     <section className="space-y-4">

@@ -1,7 +1,8 @@
 import { ProgressManager } from "@/components/ProgressManager";
 import { buildChartData, getDateOffset, getTodayIso } from "@/lib/dashboard/reporting";
+import { listCoachProgressPage } from "@/lib/coach/queries";
 import { getCoachContext, getCoachStudents } from "@/lib/supabase/api";
-import { getPaginationRange, normalizeDateParam, parsePageParam, parseScalarParam } from "@/lib/search-params";
+import { normalizeDateParam, parsePageParam, parseScalarParam } from "@/lib/search-params";
 import { ProgressEntry, Student } from "@/types/domain";
 
 const PROGRESS_PAGE_SIZE = 20;
@@ -34,38 +35,18 @@ export default async function ProgressPage({ searchParams }: ProgressPageProps) 
   let hasNextPage = false;
 
   if (selectedStudentId) {
-    const { from, to } = getPaginationRange(page, PROGRESS_PAGE_SIZE);
+    const paginatedProgress = await listCoachProgressPage({
+      supabase,
+      studentId: selectedStudentId,
+      page,
+      pageSize: PROGRESS_PAGE_SIZE,
+      startDate,
+      endDate
+    });
 
-    let historyQuery = supabase
-      .from("progress")
-      .select("*")
-      .eq("student_id", selectedStudentId)
-      .order("date", { ascending: false })
-      .range(from, to);
-
-    let chartQuery = supabase
-      .from("progress")
-      .select("*")
-      .eq("student_id", selectedStudentId)
-      .order("date", { ascending: false })
-      .range(0, 59);
-
-    if (startDate) {
-      historyQuery = historyQuery.gte("date", startDate);
-      chartQuery = chartQuery.gte("date", startDate);
-    }
-
-    if (endDate) {
-      historyQuery = historyQuery.lte("date", endDate);
-      chartQuery = chartQuery.lte("date", endDate);
-    }
-
-    const [{ data: historyRows }, { data: chartRows }] = await Promise.all([historyQuery, chartQuery]);
-    const paginatedRows = (historyRows ?? []) as ProgressEntry[];
-
-    historyEntries = paginatedRows.slice(0, PROGRESS_PAGE_SIZE);
-    hasNextPage = paginatedRows.length > PROGRESS_PAGE_SIZE;
-    chartEntries = (chartRows ?? []) as ProgressEntry[];
+    historyEntries = paginatedProgress.items;
+    chartEntries = paginatedProgress.chartEntries;
+    hasNextPage = paginatedProgress.hasNextPage;
   }
 
   return (

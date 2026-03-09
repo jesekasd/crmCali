@@ -1,5 +1,6 @@
 -- Enable UUID support
 create extension if not exists "pgcrypto";
+create extension if not exists "pg_trgm";
 
 -- Users profile table (mapped 1:1 to auth.users)
 create table if not exists public.users (
@@ -75,10 +76,15 @@ create table if not exists public.student_goals (
 );
 
 create index if not exists idx_students_coach on public.students(coach_id);
+create index if not exists idx_students_coach_status_created on public.students(coach_id, status, created_at desc);
+create index if not exists idx_students_name_trgm on public.students using gin (name gin_trgm_ops);
+create index if not exists idx_students_goal_trgm on public.students using gin (goal gin_trgm_ops);
 create index if not exists idx_workouts_coach on public.workouts(coach_id);
 create index if not exists idx_progress_student_date on public.progress(student_id, date desc);
 create index if not exists idx_payments_student_date on public.payments(student_id, date desc);
+create index if not exists idx_payments_student_status_date on public.payments(student_id, status, date desc);
 create index if not exists idx_student_goals_student on public.student_goals(student_id, target_date desc);
+create index if not exists idx_student_goals_student_status_target on public.student_goals(student_id, status, target_date desc);
 
 -- Helper function to resolve coach ID from auth.uid()
 create or replace function public.current_coach_id()

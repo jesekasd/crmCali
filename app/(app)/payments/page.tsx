@@ -1,8 +1,9 @@
 import { PaymentsManager } from "@/components/PaymentsManager";
 import { getDateOffset, getTodayIso } from "@/lib/dashboard/reporting";
+import { listCoachPaymentsPage, PaymentStatusFilter } from "@/lib/coach/queries";
 import { getCoachContext, getCoachStudents } from "@/lib/supabase/api";
-import { getPaginationRange, normalizeDateParam, normalizeEnumParam, parsePageParam, parseScalarParam } from "@/lib/search-params";
-import { Payment, Student } from "@/types/domain";
+import { normalizeDateParam, normalizeEnumParam, parsePageParam, parseScalarParam } from "@/lib/search-params";
+import { Student } from "@/types/domain";
 
 const PAYMENTS_PAGE_SIZE = 20;
 const PAYMENT_STATUS_FILTERS = ["all", "pending", "paid", "overdue"] as const;
@@ -24,61 +25,22 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
   const page = parsePageParam(searchParams?.page);
   const startDate = normalizeDateParam(searchParams?.start, defaultStartDate);
   const endDate = normalizeDateParam(searchParams?.end, today);
-  const status = normalizeEnumParam(searchParams?.status, PAYMENT_STATUS_FILTERS, "all");
+  const status = normalizeEnumParam(searchParams?.status, PAYMENT_STATUS_FILTERS, "all") as PaymentStatusFilter;
   const requestedStudentId = parseScalarParam(searchParams?.student);
   const selectedStudentId =
     requestedStudentId && students.some((student) => student.id === requestedStudentId) ? requestedStudentId : "all";
   const scopedStudentIds =
     selectedStudentId === "all" ? students.map((student) => student.id) : students.filter((student) => student.id === selectedStudentId).map((student) => student.id);
-
-  let payments: Payment[] = [];
-  let summaryPayments: Payment[] = [];
-  let hasNextPage = false;
-
-  if (scopedStudentIds.length > 0) {
-    const { from, to } = getPaginationRange(page, PAYMENTS_PAGE_SIZE);
-
-    let pageQuery = supabase
-      .from("payments")
-      .select("*")
-      .in("student_id", scopedStudentIds)
-      .order("date", { ascending: false })
-      .range(from, to);
-
-    let summaryQuery = supabase
-      .from("payments")
-      .select("*")
-      .in("student_id", scopedStudentIds)
-      .order("date", { ascending: false });
-
-    if (status !== "all") {
-      pageQuery = pageQuery.eq("status", status);
-    }
-
-    if (startDate) {
-      pageQuery = pageQuery.gte("date", startDate);
-      summaryQuery = summaryQuery.gte("date", startDate);
-    }
-
-    if (endDate) {
-      pageQuery = pageQuery.lte("date", endDate);
-      summaryQuery = summaryQuery.lte("date", endDate);
-    }
-
-    const [{ data: pageRows }, { data: summaryRows }] = await Promise.all([pageQuery, summaryQuery]);
-    const paginatedRows = (pageRows ?? []) as Payment[];
-
-    payments = paginatedRows.slice(0, PAYMENTS_PAGE_SIZE);
-    hasNextPage = paginatedRows.length > PAYMENTS_PAGE_SIZE;
-    summaryPayments = (summaryRows ?? []) as Payment[];
-  }
-
-  const monthKey = today.slice(0, 7);
-  const monthlyRevenue = summaryPayments
-    .filter((payment) => payment.status === "paid" && payment.date.startsWith(monthKey))
-    .reduce((total, payment) => total + Number(payment.amount), 0);
-  const pendingCount = summaryPayments.filter((payment) => payment.status === "pending").length;
-  const overdueCount = summaryPayments.filter((payment) => payment.status === "overdue").length;
+  const paymentPage = await listCoachPaymentsPage({
+    supabase,
+    studentIds: scopedStudentIds,
+    page,
+    pageSize: PAYMENTS_PAGE_SIZE,
+    startDate,
+    endDate,
+    status,
+    referenceDate: today
+  });
 
   return (
     <section className="space-y-4">
@@ -88,11 +50,11 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
       </header>
       <PaymentsManager
         students={students}
-        payments={payments}
-        summary={{ monthlyRevenue, pendingCount, overdueCount }}
+        payments={paymentPage.items}
+        summary={paymentPage.summary}
         filters={{ selectedStudentId, status, startDate, endDate, page }}
         pageSize={PAYMENTS_PAGE_SIZE}
-        hasNextPage={hasNextPage}
+        hasNextPage={paymentPage.hasNextPage}
       />
     </section>
   );
