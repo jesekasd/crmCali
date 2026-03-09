@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Student } from "@/types/domain";
 import { StudentCard } from "@/components/StudentCard";
+import { apiRequest } from "@/lib/client/api";
 
 interface StudentsManagerProps {
   initialStudents: Student[];
@@ -53,15 +54,11 @@ export function StudentsManager({ initialStudents }: StudentsManagerProps) {
     setSaving(true);
     setError(null);
     try {
-      const response = await fetch("/api/students", {
+      const created = await apiRequest<Student>("/api/students", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form)
       });
-      if (!response.ok) {
-        throw new Error("No se pudo crear el alumno.");
-      }
-      const created = (await response.json()) as Student;
       setStudents((prev) => [created, ...prev]);
       setForm(defaultForm());
     } catch (createError) {
@@ -75,23 +72,16 @@ export function StudentsManager({ initialStudents }: StudentsManagerProps) {
     id: string,
     payload: Partial<Pick<Student, "name" | "level" | "goal" | "start_date" | "status">>
   ) => {
-    const response = await fetch(`/api/students/${id}`, {
+    const updated = await apiRequest<Student>(`/api/students/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    if (!response.ok) {
-      throw new Error("No se pudo actualizar el alumno.");
-    }
-    const updated = (await response.json()) as Student;
     setStudents((prev) => prev.map((student) => (student.id === id ? updated : student)));
   };
 
   const deleteStudent = async (id: string) => {
-    const response = await fetch(`/api/students/${id}`, { method: "DELETE" });
-    if (!response.ok) {
-      throw new Error("No se pudo eliminar el alumno.");
-    }
+    await apiRequest<{ ok: true }>(`/api/students/${id}`, { method: "DELETE" });
     setStudents((prev) => prev.filter((student) => student.id !== id));
   };
 

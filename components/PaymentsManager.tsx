@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Payment, Student } from "@/types/domain";
 import { PaymentTable } from "@/components/PaymentTable";
 import { StatCard } from "@/components/StatCard";
+import { apiRequest } from "@/lib/client/api";
 
 interface PaymentsManagerProps {
   students: Student[];
@@ -55,7 +56,7 @@ export function PaymentsManager({ students, initialPayments }: PaymentsManagerPr
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/payments", {
+      const created = await apiRequest<Payment>("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -65,10 +66,6 @@ export function PaymentsManager({ students, initialPayments }: PaymentsManagerPr
           date: form.date
         })
       });
-      if (!response.ok) {
-        throw new Error("No se pudo crear el pago.");
-      }
-      const created = (await response.json()) as Payment;
       setPayments((prev) => [created, ...prev]);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Error inesperado.");
@@ -78,15 +75,11 @@ export function PaymentsManager({ students, initialPayments }: PaymentsManagerPr
   };
 
   const updatePaymentStatus = async (paymentId: string, status: "paid" | "pending" | "overdue") => {
-    const response = await fetch("/api/payments", {
+    const updated = await apiRequest<Payment>("/api/payments", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: paymentId, status })
     });
-    if (!response.ok) {
-      throw new Error("No se pudo actualizar el estado del pago.");
-    }
-    const updated = (await response.json()) as Payment;
     setPayments((prev) => prev.map((payment) => (payment.id === updated.id ? updated : payment)));
   };
 

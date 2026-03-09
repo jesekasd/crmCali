@@ -260,6 +260,18 @@ export function getMetricLabel(metric: GoalMetric) {
   return "Handstand";
 }
 
+export function getGoalEffectiveStatus(goal: StudentGoal, currentValue: number) {
+  if (goal.status === "archived") {
+    return "archived";
+  }
+
+  if (currentValue >= goal.target_value) {
+    return "completed";
+  }
+
+  return "active";
+}
+
 export function buildGoalSnapshots(
   goals: StudentGoal[],
   progressEntries: ProgressEntry[],
@@ -270,6 +282,7 @@ export function buildGoalSnapshots(
       const entriesForStudent = progressEntries.filter((entry) => entry.student_id === goal.student_id);
       const currentValue = entriesForStudent.reduce((best, entry) => Math.max(best, getMetricValue(entry, goal.metric as GoalMetric)), 0);
       const achieved = currentValue >= goal.target_value;
+      const status = getGoalEffectiveStatus(goal, currentValue);
 
       return {
         id: goal.id,
@@ -278,7 +291,7 @@ export function buildGoalSnapshots(
         metric: goal.metric as GoalMetric,
         targetValue: goal.target_value,
         targetDate: goal.target_date,
-        status: goal.status,
+        status,
         notes: goal.notes,
         currentValue,
         progressRatio: goal.target_value === 0 ? 1 : Math.min(currentValue / goal.target_value, 1),
@@ -319,7 +332,6 @@ export function buildGoalAlerts(
   const alerts: DashboardAlert[] = [];
 
   goals
-    .filter((goal) => goal.status === "active")
     .forEach((goal) => {
       const metric = goal.metric as GoalMetric;
       const entriesForStudent = progressEntries
@@ -327,7 +339,12 @@ export function buildGoalAlerts(
         .sort((left, right) => right.date.localeCompare(left.date));
 
       const bestValue = entriesForStudent.reduce((best, entry) => Math.max(best, getMetricValue(entry, metric)), 0);
+      const status = getGoalEffectiveStatus(goal, bestValue);
       const studentName = studentsById[goal.student_id]?.name ?? "Alumno desconocido";
+
+      if (status !== "active") {
+        return;
+      }
 
       if (goal.target_date < referenceDate && bestValue < goal.target_value) {
         alerts.push({

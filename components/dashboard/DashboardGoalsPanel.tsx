@@ -36,6 +36,7 @@ export function DashboardGoalsPanel({
     notes: ""
   });
   const [loading, setLoading] = useState(false);
+  const [actionGoalId, setActionGoalId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -62,6 +63,19 @@ export function DashboardGoalsPanel({
       setError(createError instanceof Error ? createError.message : "No se pudo crear la meta.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const runGoalAction = async (goalId: string, action: () => Promise<void>) => {
+    setActionGoalId(goalId);
+    setError(null);
+
+    try {
+      await action();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "No se pudo actualizar la meta.");
+    } finally {
+      setActionGoalId(null);
     }
   };
 
@@ -170,31 +184,39 @@ export function DashboardGoalsPanel({
               <div data-export-hidden="true" className="mt-3 flex flex-wrap gap-2">
                 {goal.status !== "completed" ? (
                   <button
-                    onClick={() => onUpdateGoal(goal.id, { status: "completed" })}
+                    type="button"
+                    onClick={() => runGoalAction(goal.id, () => onUpdateGoal(goal.id, { status: "completed" }))}
                     className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-medium text-emerald-700"
+                    disabled={actionGoalId === goal.id}
                   >
                     Marcar completada
                   </button>
                 ) : null}
                 {goal.status !== "archived" ? (
                   <button
-                    onClick={() => onUpdateGoal(goal.id, { status: "archived" })}
+                    type="button"
+                    onClick={() => runGoalAction(goal.id, () => onUpdateGoal(goal.id, { status: "archived" }))}
                     className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700"
+                    disabled={actionGoalId === goal.id}
                   >
                     Archivar
                   </button>
                 ) : null}
                 {goal.status !== "active" ? (
                   <button
-                    onClick={() => onUpdateGoal(goal.id, { status: "active" })}
+                    type="button"
+                    onClick={() => runGoalAction(goal.id, () => onUpdateGoal(goal.id, { status: "active" }))}
                     className="rounded-lg border border-brand-200 px-3 py-1 text-xs font-medium text-brand-700"
+                    disabled={actionGoalId === goal.id}
                   >
                     Reactivar
                   </button>
                 ) : null}
                 <button
-                  onClick={() => onDeleteGoal(goal.id)}
+                  type="button"
+                  onClick={() => runGoalAction(goal.id, () => onDeleteGoal(goal.id))}
                   className="rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700"
+                  disabled={actionGoalId === goal.id}
                 >
                   Eliminar
                 </button>

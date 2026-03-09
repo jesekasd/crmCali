@@ -1,60 +1,33 @@
 import { DashboardReports } from "@/components/DashboardReports";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { Payment, ProgressEntry, Student, StudentGoal } from "@/types/domain";
+import { getDashboardData } from "@/lib/dashboard/server";
+import { getCoachContext, getCoachStudents } from "@/lib/supabase/api";
 
-export default async function DashboardPage() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+interface DashboardPageProps {
+  searchParams?: { [key: string]: string | string[] | undefined };
+}
 
-  const { data: coach } = await supabase.from("coaches").select("id").eq("user_id", user!.id).maybeSingle();
-
-  if (!coach) {
-    return (
-      <section className="card p-6">
-        <h2 className="text-lg font-semibold text-slate-900">Configura tu perfil</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Tu cuenta fue creada, pero no se encontro un perfil de coach. Ejecuta el esquema SQL en Supabase para
-          habilitar el flujo completo.
-        </p>
-      </section>
-    );
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  const context = await getCoachContext();
+  if ("error" in context) {
+    return context.error;
   }
 
-  const { data: studentRows } = await supabase
-    .from("students")
-    .select("*")
-    .eq("coach_id", coach.id)
-    .order("name", { ascending: true });
+  const { supabase, coachId } = context;
+  const students = await getCoachStudents(supabase, coachId);
 
-  const students = (studentRows ?? []) as Student[];
-  const studentIds = students.map((student) => student.id);
-  const activeStudentCount = students.filter((student) => student.status === "active").length;
-
-  let payments: Payment[] = [];
-  let progressEntries: ProgressEntry[] = [];
-  let goals: StudentGoal[] = [];
-
-  if (studentIds.length > 0) {
-    const [{ data: paymentRows }, { data: progressRows }, { data: goalRows }] = await Promise.all([
-      supabase.from("payments").select("*").in("student_id", studentIds).order("date", { ascending: false }),
-      supabase.from("progress").select("*").in("student_id", studentIds).order("date", { ascending: false }),
-      supabase.from("student_goals").select("*").in("student_id", studentIds).order("target_date", { ascending: true })
-    ]);
-
-    payments = (paymentRows ?? []) as Payment[];
-    progressEntries = (progressRows ?? []) as ProgressEntry[];
-    goals = (goalRows ?? []) as StudentGoal[];
-  }
+  const { filteredPayments, filteredProgress, recentEntries, viewModel } = await getDashboardData({
+    supabase,
+    students,
+    searchParams
+  });
 
   return (
     <DashboardReports
       students={students}
-      progressEntries={progressEntries}
-      payments={payments}
-      goals={goals}
-      activeStudentCount={activeStudentCount}
+      filteredProgress={filteredProgress}
+      filteredPayments={filteredPayments}
+      recentEntries={recentEntries}
+      viewModel={viewModel}
     />
   );
 }

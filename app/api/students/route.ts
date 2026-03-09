@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCoachContext } from "@/lib/supabase/api";
+import { getCoachContext, getCoachStudents } from "@/lib/supabase/api";
 
 export async function GET() {
   const context = await getCoachContext();
@@ -8,17 +8,8 @@ export async function GET() {
   }
 
   const { supabase, coachId } = context;
-  const { data, error } = await supabase
-    .from("students")
-    .select("*")
-    .eq("coach_id", coachId)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
-  }
-
-  return NextResponse.json(data);
+  const students = await getCoachStudents(supabase, coachId);
+  return NextResponse.json(students);
 }
 
 export async function POST(request: NextRequest) {

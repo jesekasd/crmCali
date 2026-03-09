@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ProgressEntry, Student } from "@/types/domain";
 import { ProgressChart } from "@/components/ProgressChart";
+import { apiRequest } from "@/lib/client/api";
 
 interface ProgressManagerProps {
   students: Student[];
@@ -46,7 +47,7 @@ export function ProgressManager({ students, initialEntries }: ProgressManagerPro
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/progress", {
+      const created = await apiRequest<ProgressEntry>("/api/progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -58,10 +59,6 @@ export function ProgressManager({ students, initialEntries }: ProgressManagerPro
           date: form.date
         })
       });
-      if (!response.ok) {
-        throw new Error("No se pudo registrar el progreso.");
-      }
-      const created = (await response.json()) as ProgressEntry;
       setEntries((prev) => [created, ...prev]);
     } catch (registerError) {
       setError(registerError instanceof Error ? registerError.message : "Error inesperado.");

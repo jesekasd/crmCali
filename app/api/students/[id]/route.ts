@@ -1,24 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCoachContext } from "@/lib/supabase/api";
+import { getCoachContext, getOwnedStudent } from "@/lib/supabase/api";
 
 type Params = {
   params: { id: string };
 };
-
-async function validateStudentOwnership(studentId: string, coachId: string, supabase: any) {
-  const { data: student, error } = await supabase
-    .from("students")
-    .select("id")
-    .eq("id", studentId)
-    .eq("coach_id", coachId)
-    .maybeSingle();
-
-  if (error || !student) {
-    return false;
-  }
-
-  return true;
-}
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   const context = await getCoachContext();
@@ -27,8 +12,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const { supabase, coachId } = context;
-  const isOwner = await validateStudentOwnership(params.id, coachId, supabase);
-  if (!isOwner) {
+  const student = await getOwnedStudent(supabase, coachId, params.id);
+  if (!student) {
     return NextResponse.json({ error: "Student not found" }, { status: 404 });
   }
 
@@ -67,8 +52,8 @@ export async function DELETE(_: NextRequest, { params }: Params) {
   }
 
   const { supabase, coachId } = context;
-  const isOwner = await validateStudentOwnership(params.id, coachId, supabase);
-  if (!isOwner) {
+  const student = await getOwnedStudent(supabase, coachId, params.id);
+  if (!student) {
     return NextResponse.json({ error: "Student not found" }, { status: 404 });
   }
 

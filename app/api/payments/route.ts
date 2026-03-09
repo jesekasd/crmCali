@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCoachContext } from "@/lib/supabase/api";
+import { getCoachContext, getCoachStudentIds, getOwnedPayment, getOwnedStudent } from "@/lib/supabase/api";
 
 export async function GET() {
   const context = await getCoachContext();
@@ -8,8 +8,7 @@ export async function GET() {
   }
 
   const { supabase, coachId } = context;
-  const { data: students } = await supabase.from("students").select("id").eq("coach_id", coachId);
-  const studentIds = (students ?? []).map((student) => student.id);
+  const studentIds = await getCoachStudentIds(supabase, coachId);
 
   if (studentIds.length === 0) {
     return NextResponse.json([]);
@@ -46,12 +45,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { supabase, coachId } = context;
-  const { data: student } = await supabase
-    .from("students")
-    .select("id")
-    .eq("id", body.studentId)
-    .eq("coach_id", coachId)
-    .maybeSingle();
+  const student = await getOwnedStudent(supabase, coachId, body.studentId);
 
   if (!student) {
     return NextResponse.json({ error: "student not found" }, { status: 404 });
@@ -88,20 +82,8 @@ export async function PATCH(request: NextRequest) {
   }
 
   const { supabase, coachId } = context;
-  const { data: payment } = await supabase.from("payments").select("id, student_id").eq("id", body.id).maybeSingle();
-
+  const payment = await getOwnedPayment(supabase, coachId, body.id);
   if (!payment) {
-    return NextResponse.json({ error: "payment not found" }, { status: 404 });
-  }
-
-  const { data: student } = await supabase
-    .from("students")
-    .select("id")
-    .eq("id", payment.student_id)
-    .eq("coach_id", coachId)
-    .maybeSingle();
-
-  if (!student) {
     return NextResponse.json({ error: "payment not found" }, { status: 404 });
   }
 

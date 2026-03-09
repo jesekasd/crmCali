@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCoachContext } from "@/lib/supabase/api";
+import { getCoachContext, getOwnedStudent, getOwnedWorkout, getOwnedWorkoutAssignment } from "@/lib/supabase/api";
 
 export async function POST(request: NextRequest) {
   const context = await getCoachContext();
@@ -13,10 +13,9 @@ export async function POST(request: NextRequest) {
   }
 
   const { supabase, coachId } = context;
-
-  const [{ data: workout }, { data: student }] = await Promise.all([
-    supabase.from("workouts").select("id").eq("id", body.workoutId).eq("coach_id", coachId).maybeSingle(),
-    supabase.from("students").select("id").eq("id", body.studentId).eq("coach_id", coachId).maybeSingle()
+  const [workout, student] = await Promise.all([
+    getOwnedWorkout(supabase, coachId, body.workoutId),
+    getOwnedStudent(supabase, coachId, body.studentId)
   ]);
 
   if (!workout || !student) {
@@ -51,22 +50,8 @@ export async function DELETE(request: NextRequest) {
   }
 
   const { supabase, coachId } = context;
-  const { data: assignment } = await supabase
-    .from("workout_assignments")
-    .select("id, workout_id, student_id")
-    .eq("id", assignmentId)
-    .maybeSingle();
-
+  const assignment = await getOwnedWorkoutAssignment(supabase, coachId, assignmentId);
   if (!assignment) {
-    return NextResponse.json({ error: "assignment not found" }, { status: 404 });
-  }
-
-  const [{ data: workout }, { data: student }] = await Promise.all([
-    supabase.from("workouts").select("id").eq("id", assignment.workout_id).eq("coach_id", coachId).maybeSingle(),
-    supabase.from("students").select("id").eq("id", assignment.student_id).eq("coach_id", coachId).maybeSingle()
-  ]);
-
-  if (!workout || !student) {
     return NextResponse.json({ error: "assignment not found" }, { status: 404 });
   }
 

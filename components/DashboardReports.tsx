@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ProgressChart } from "@/components/ProgressChart";
 import { StatCard } from "@/components/StatCard";
 import { DashboardAlertsPanel } from "@/components/dashboard/DashboardAlertsPanel";
@@ -9,106 +10,85 @@ import { DashboardGoalsPanel } from "@/components/dashboard/DashboardGoalsPanel"
 import { DashboardRecentActivity } from "@/components/dashboard/DashboardRecentActivity";
 import { DashboardStudentSummary } from "@/components/dashboard/DashboardStudentSummary";
 import { DashboardTrendGrid } from "@/components/dashboard/DashboardTrendGrid";
+import { apiRequest } from "@/lib/client/api";
 import { downloadDashboardCsv, printDashboardReport } from "@/lib/dashboard/export";
-import {
-  buildChartData,
-  buildCoverageCount,
-  buildGoalAlerts,
-  buildGoalSnapshots,
-  buildMonthlyTrendMetrics,
-  buildPerformanceSummary,
-  buildStudentRows,
-  filterGoals,
-  filterPayments,
-  filterProgressEntries,
-  getDateOffset
-} from "@/lib/dashboard/reporting";
+import { getDateOffset, getTodayIso } from "@/lib/dashboard/reporting";
+import { DashboardFilterState, DashboardViewModel } from "@/lib/dashboard/types";
 import { GoalMetric, Payment, ProgressEntry, Student, StudentGoal } from "@/types/domain";
 
 interface DashboardReportsProps {
   students: Student[];
-  progressEntries: ProgressEntry[];
-  payments: Payment[];
-  goals: StudentGoal[];
-  activeStudentCount: number;
+  filteredProgress: ProgressEntry[];
+  filteredPayments: Payment[];
+  recentEntries: ProgressEntry[];
+  viewModel: DashboardViewModel;
+}
+
+function buildDashboardUrl(pathname: string, params: URLSearchParams) {
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
 }
 
 export function DashboardReports({
   students,
-  progressEntries,
-  payments,
-  goals: initialGoals,
-  activeStudentCount
+  filteredProgress,
+  filteredPayments,
+  recentEntries,
+  viewModel
 }: DashboardReportsProps) {
-  const [selectedStudentId, setSelectedStudentId] = useState("all");
-  const [startDate, setStartDate] = useState(getDateOffset(30));
-  const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
-  const [goals, setGoals] = useState<StudentGoal[]>(initialGoals);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
   const studentsById = useMemo(() => Object.fromEntries(students.map((student) => [student.id, student])), [students]);
+  const { filters, summary, chartData, trendMetrics, goalSnapshots, alerts, studentRows } = viewModel;
 
-  const studentScopedProgress = useMemo(() => {
-    return selectedStudentId === "all"
-      ? progressEntries
-      : progressEntries.filter((entry) => entry.student_id === selectedStudentId);
-  }, [progressEntries, selectedStudentId]);
+  const updateFilters = (updates: Partial<DashboardFilterState>) => {
+    const params = new URLSearchParams(searchParams.toString());
 
-  const studentScopedPayments = useMemo(() => {
-    return selectedStudentId === "all" ? payments : payments.filter((payment) => payment.student_id === selectedStudentId);
-  }, [payments, selectedStudentId]);
+    if ("selectedStudentId" in updates) {
+      const value = updates.selectedStudentId;
+      if (!value || value === "all") {
+        params.delete("student");
+      } else {
+        params.set("student", value);
+      }
+    }
 
-  const studentScopedGoals = useMemo(() => filterGoals(goals, selectedStudentId), [goals, selectedStudentId]);
+    if ("startDate" in updates) {
+      const value = updates.startDate;
+      if (!value) {
+        params.set("start", "all");
+      } else if (value === getDateOffset(30)) {
+        params.delete("start");
+      } else {
+        params.set("start", value);
+      }
+    }
 
-  const filteredProgress = useMemo(() => {
-    return filterProgressEntries(progressEntries, selectedStudentId, startDate, endDate);
-  }, [progressEntries, selectedStudentId, startDate, endDate]);
+    if ("endDate" in updates) {
+      const value = updates.endDate;
+      if (!value || value === getTodayIso()) {
+        params.delete("end");
+      } else {
+        params.set("end", value);
+      }
+    }
 
-  const filteredPayments = useMemo(() => {
-    return filterPayments(payments, selectedStudentId, startDate, endDate);
-  }, [payments, selectedStudentId, startDate, endDate]);
+    startTransition(() => {
+      router.replace(buildDashboardUrl(pathname, params), { scroll: false });
+    });
+  };
 
-  const chartData = useMemo(() => buildChartData(filteredProgress), [filteredProgress]);
-  const performanceSummary = useMemo(() => buildPerformanceSummary(filteredProgress), [filteredProgress]);
-  const coverageCount = useMemo(() => {
-    return buildCoverageCount(filteredProgress, filteredPayments, selectedStudentId, studentsById);
-  }, [filteredPayments, filteredProgress, selectedStudentId, studentsById]);
-  const studentRows = useMemo(() => {
-    return buildStudentRows(students, filteredProgress, filteredPayments, selectedStudentId);
-  }, [filteredPayments, filteredProgress, selectedStudentId, students]);
-
-  const recentEntries = useMemo(() => {
-    return filteredProgress
-      .slice()
-      .sort((left, right) => right.date.localeCompare(left.date))
-      .slice(0, 10);
-  }, [filteredProgress]);
-
-  const paidRevenue = useMemo(() => {
-    return filteredPayments
-      .filter((payment) => payment.status === "paid")
-      .reduce((total, payment) => total + Number(payment.amount), 0);
-  }, [filteredPayments]);
-
-  const pendingRevenue = useMemo(() => {
-    return filteredPayments
-      .filter((payment) => payment.status !== "paid")
-      .reduce((total, payment) => total + Number(payment.amount), 0);
-  }, [filteredPayments]);
-
-  const monthlyTrendMetrics = useMemo(() => {
-    return buildMonthlyTrendMetrics(studentScopedProgress, studentScopedPayments);
-  }, [studentScopedPayments, studentScopedProgress]);
-
-  const goalSnapshots = useMemo(() => {
-    return buildGoalSnapshots(studentScopedGoals, studentScopedProgress, studentsById);
-  }, [studentScopedGoals, studentScopedProgress, studentsById]);
-
-  const alerts = useMemo(() => {
-    return buildGoalAlerts(studentScopedGoals, studentScopedProgress, studentsById);
-  }, [studentScopedGoals, studentScopedProgress, studentsById]);
+  const resetFilters = () => {
+    startTransition(() => {
+      router.replace(pathname, { scroll: false });
+    });
+  };
 
   const activeFilterLabel =
-    selectedStudentId === "all" ? "Todos los alumnos" : (studentsById[selectedStudentId]?.name ?? "Alumno");
+    filters.selectedStudentId === "all" ? "Todos los alumnos" : (studentsById[filters.selectedStudentId]?.name ?? "Alumno");
 
   const createGoal = async (payload: {
     studentId: string;
@@ -117,43 +97,32 @@ export function DashboardReports({
     targetDate: string;
     notes: string;
   }) => {
-    const response = await fetch("/api/student-goals", {
+    await apiRequest<StudentGoal>("/api/student-goals", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-
-    if (!response.ok) {
-      throw new Error("No se pudo crear la meta.");
-    }
-
-    const created = (await response.json()) as StudentGoal;
-    setGoals((current) => [...current, created]);
+    startTransition(() => {
+      router.refresh();
+    });
   };
 
   const updateGoal = async (goalId: string, payload: Partial<Pick<StudentGoal, "status">>) => {
-    const response = await fetch(`/api/student-goals/${goalId}`, {
+    await apiRequest<StudentGoal>(`/api/student-goals/${goalId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-
-    if (!response.ok) {
-      throw new Error("No se pudo actualizar la meta.");
-    }
-
-    const updated = (await response.json()) as StudentGoal;
-    setGoals((current) => current.map((goal) => (goal.id === goalId ? updated : goal)));
+    startTransition(() => {
+      router.refresh();
+    });
   };
 
   const deleteGoal = async (goalId: string) => {
-    const response = await fetch(`/api/student-goals/${goalId}`, { method: "DELETE" });
-
-    if (!response.ok) {
-      throw new Error("No se pudo eliminar la meta.");
-    }
-
-    setGoals((current) => current.filter((goal) => goal.id !== goalId));
+    await apiRequest<{ ok: true }>(`/api/student-goals/${goalId}`, { method: "DELETE" });
+    startTransition(() => {
+      router.refresh();
+    });
   };
 
   const exportCsv = () => {
@@ -161,9 +130,9 @@ export function DashboardReports({
       studentRows,
       progressEntries: filteredProgress,
       payments: filteredPayments,
-      trendMetrics: monthlyTrendMetrics,
+      trendMetrics,
       studentNames: Object.fromEntries(students.map((student) => [student.id, student.name])),
-      fileName: `calistrack-report-${selectedStudentId}-${endDate || "current"}.csv`
+      fileName: `calistrack-report-${filters.selectedStudentId}-${filters.endDate || "current"}.csv`
     });
   };
 
@@ -186,9 +155,10 @@ export function DashboardReports({
       <article className="card p-5">
         <div data-export-hidden="true" className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr_auto]">
           <select
-            value={selectedStudentId}
-            onChange={(event) => setSelectedStudentId(event.target.value)}
+            value={filters.selectedStudentId}
+            onChange={(event) => updateFilters({ selectedStudentId: event.target.value })}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            disabled={isPending}
           >
             <option value="all">Todos los alumnos</option>
             {students.map((student) => (
@@ -199,78 +169,82 @@ export function DashboardReports({
           </select>
           <input
             type="date"
-            value={startDate}
-            onChange={(event) => setStartDate(event.target.value)}
+            value={filters.startDate}
+            onChange={(event) => updateFilters({ startDate: event.target.value })}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            disabled={isPending}
           />
           <input
             type="date"
-            value={endDate}
-            onChange={(event) => setEndDate(event.target.value)}
+            value={filters.endDate}
+            onChange={(event) => updateFilters({ endDate: event.target.value })}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            disabled={isPending}
           />
           <button
-            onClick={() => {
-              setSelectedStudentId("all");
-              setStartDate(getDateOffset(30));
-              setEndDate(new Date().toISOString().slice(0, 10));
-            }}
+            onClick={resetFilters}
             className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700"
+            disabled={isPending}
           >
             Resetear
           </button>
         </div>
         <div data-export-hidden="true" className="mt-3 flex flex-wrap gap-2">
           <button
-            onClick={() => setStartDate(getDateOffset(7))}
+            onClick={() => updateFilters({ startDate: getDateOffset(7) })}
             className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700"
+            disabled={isPending}
           >
             7 dias
           </button>
           <button
-            onClick={() => setStartDate(getDateOffset(30))}
+            onClick={() => updateFilters({ startDate: getDateOffset(30) })}
             className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700"
+            disabled={isPending}
           >
             30 dias
           </button>
           <button
-            onClick={() => setStartDate(getDateOffset(90))}
+            onClick={() => updateFilters({ startDate: getDateOffset(90) })}
             className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700"
+            disabled={isPending}
           >
             90 dias
           </button>
           <button
-            onClick={() => setStartDate("")}
+            onClick={() => updateFilters({ startDate: "" })}
             className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700"
+            disabled={isPending}
           >
             Todo el historial
           </button>
         </div>
         <p className="mt-3 text-sm text-slate-500">
-          Filtro activo: {activeFilterLabel} | Ventana: {startDate || "inicio"} a {endDate || "hoy"}
+          Filtro activo: {activeFilterLabel} | Ventana: {filters.startDate || "inicio"} a {filters.endDate || "hoy"}
         </p>
+        {isPending ? <p className="mt-2 text-xs text-slate-400">Actualizando reporte...</p> : null}
       </article>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Alumnos activos" value={String(activeStudentCount)} hint={`En reporte: ${coverageCount}`} />
+        <StatCard title="Alumnos activos" value={String(summary.activeStudentCount)} hint={`En reporte: ${summary.coverageCount}`} />
         <StatCard
           title="Ingresos cobrados"
-          value={`$${paidRevenue.toFixed(2)}`}
-          hint={`Pendiente o vencido: $${pendingRevenue.toFixed(2)}`}
+          value={`$${summary.paidRevenue.toFixed(2)}`}
+          hint={`Pendiente o vencido: $${summary.pendingRevenue.toFixed(2)}`}
         />
         <StatCard
           title="Registros de progreso"
-          value={String(filteredProgress.length)}
-          hint={`Alertas activas: ${alerts.length}`}
+          value={String(summary.progressCount)}
+          hint={`Alertas activas: ${summary.alertCount}`}
         />
         <StatCard
           title="Mejor marca"
-          value={performanceSummary.pullups > 0 ? `${performanceSummary.pullups} pullups` : "Sin datos"}
-          hint={`Metas activas: ${goalSnapshots.filter((goal) => goal.status === "active").length}`}
+          value={summary.performance.pullups > 0 ? `${summary.performance.pullups} pullups` : "Sin datos"}
+          hint={`Metas activas: ${summary.activeGoalsCount}`}
         />
       </div>
 
-      <DashboardTrendGrid metrics={monthlyTrendMetrics} />
+      <DashboardTrendGrid metrics={trendMetrics} />
 
       {chartData.length > 0 ? (
         <ProgressChart title="Evolucion filtrada del rendimiento" data={chartData} />
@@ -283,7 +257,7 @@ export function DashboardReports({
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <DashboardGoalsPanel
           students={students}
-          selectedStudentId={selectedStudentId}
+          selectedStudentId={filters.selectedStudentId}
           goals={goalSnapshots}
           onCreateGoal={createGoal}
           onUpdateGoal={updateGoal}

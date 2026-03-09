@@ -56,3 +56,31 @@ export interface DashboardGoalSnapshot {
   progressRatio: number;
   achieved: boolean;
 }
+
+export interface DashboardFilterState {
+  selectedStudentId: string;
+  startDate: string;
+  endDate: string;
+}
+
+export interface DashboardSummaryStats {
+  activeStudentCount: number;
+  coverageCount: number;
+  paidRevenue: number;
+  pendingRevenue: number;
+  progressCount: number;
+  alertCount: number;
+  activeGoalsCount: number;
+  performance: DashboardPerformanceSummary;
+}
+
+export interface DashboardViewModel {
+  filters: DashboardFilterState;
+  chartData: DashboardChartPoint[];
+  studentRows: DashboardStudentRow[];
+  recentEntriesCount: number;
+  trendMetrics: DashboardTrendMetric[];
+  goalSnapshots: DashboardGoalSnapshot[];
+  alerts: DashboardAlert[];
+  summary: DashboardSummaryStats;
+}

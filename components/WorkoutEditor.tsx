@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Student, Workout, WorkoutAssignment } from "@/types/domain";
+import { apiRequest } from "@/lib/client/api";
 
 interface WorkoutEditorProps {
   students: Student[];
@@ -28,15 +29,11 @@ export function WorkoutEditor({ students, initialWorkouts, initialAssignments }:
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/workouts", {
+      const created = await apiRequest<Workout>("/api/workouts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(workoutForm)
       });
-      if (!response.ok) {
-        throw new Error("No se pudo crear la rutina.");
-      }
-      const created = (await response.json()) as Workout;
       setWorkouts((prev) => [created, ...prev]);
       setWorkoutForm({ title: "", description: "" });
       setAssignmentForm((prev) => ({ ...prev, workoutId: created.id }));
@@ -52,15 +49,11 @@ export function WorkoutEditor({ students, initialWorkouts, initialAssignments }:
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/workout-assignments", {
+      const created = await apiRequest<WorkoutAssignment>("/api/workout-assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(assignmentForm)
       });
-      if (!response.ok) {
-        throw new Error("No se pudo asignar la rutina.");
-      }
-      const created = (await response.json()) as WorkoutAssignment;
       setAssignments((prev) => [created, ...prev]);
     } catch (assignmentError) {
       setError(assignmentError instanceof Error ? assignmentError.message : "Error inesperado.");
@@ -73,12 +66,9 @@ export function WorkoutEditor({ students, initialWorkouts, initialAssignments }:
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/workout-assignments?id=${encodeURIComponent(assignmentId)}`, {
+      await apiRequest<{ ok: true; id: string }>(`/api/workout-assignments?id=${encodeURIComponent(assignmentId)}`, {
         method: "DELETE"
       });
-      if (!response.ok) {
-        throw new Error("No se pudo desasignar la rutina.");
-      }
       setAssignments((prev) => prev.filter((assignment) => assignment.id !== assignmentId));
     } catch (removeError) {
       setError(removeError instanceof Error ? removeError.message : "Error inesperado.");
