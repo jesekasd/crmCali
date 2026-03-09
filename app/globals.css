@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f5f7fa;
+  --foreground: #101828;
+  --muted: #667085;
+  --surface: #ffffff;
+  --border: #eaecf0;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at 0% 0%, #ecfdf3 0%, #f5f7fa 40%, #f5f7fa 100%);
+  color: var(--foreground);
+  font-family: "Segoe UI", "Inter", sans-serif;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
+}
