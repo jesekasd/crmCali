@@ -1,22 +1,41 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Payment, Student } from "@/types/domain";
 import { PaymentTable } from "@/components/PaymentTable";
+import { PaginationControls } from "@/components/PaginationControls";
 import { StatCard } from "@/components/StatCard";
 import { apiRequest } from "@/lib/client/api";
+import { buildUrlWithUpdatedSearchParams } from "@/lib/client/search-params";
+import { getDateOffset } from "@/lib/dashboard/reporting";
 
 interface PaymentsManagerProps {
   students: Student[];
-  initialPayments: Payment[];
+  payments: Payment[];
+  summary: {
+    monthlyRevenue: number;
+    pendingCount: number;
+    overdueCount: number;
+  };
+  filters: {
+    selectedStudentId: string;
+    status: "all" | "pending" | "paid" | "overdue";
+    startDate: string;
+    endDate: string;
+    page: number;
+  };
+  pageSize: number;
+  hasNextPage: boolean;
 }
 
-export function PaymentsManager({ students, initialPayments }: PaymentsManagerProps) {
-  const [payments, setPayments] = useState(initialPayments);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "paid" | "overdue">("all");
+export function PaymentsManager({ students, payments, summary, filters, pageSize, hasNextPage }: PaymentsManagerProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
   const [form, setForm] = useState({
-    studentId: students[0]?.id ?? "",
+    studentId: filters.selectedStudentId !== "all" ? filters.selectedStudentId : (students[0]?.id ?? ""),
     amount: "0",
     status: "pending",
     date: new Date().toISOString().slice(0, 10)
@@ -24,39 +43,27 @@ export function PaymentsManager({ students, initialPayments }: PaymentsManagerPr
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const studentsById = useMemo(() => Object.fromEntries(students.map((student) => [student.id, student.name])), [students]);
+  const studentsById = Object.fromEntries(students.map((student) => [student.id, student.name]));
 
-  const monthlyRevenue = useMemo(() => {
-    const now = new Date();
-    const month = now.toISOString().slice(0, 7);
-    return payments
-      .filter((payment) => payment.status === "paid" && payment.date.startsWith(month))
-      .reduce((acc, payment) => acc + Number(payment.amount), 0);
-  }, [payments]);
+  useEffect(() => {
+    if (filters.selectedStudentId !== "all") {
+      setForm((current) => ({ ...current, studentId: filters.selectedStudentId }));
+    }
+  }, [filters.selectedStudentId]);
 
-  const pendingCount = useMemo(() => payments.filter((payment) => payment.status === "pending").length, [payments]);
-  const overdueCount = useMemo(() => payments.filter((payment) => payment.status === "overdue").length, [payments]);
-
-  const filteredPayments = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-    return payments.filter((payment) => {
-      const matchesStatus = statusFilter === "all" ? true : payment.status === statusFilter;
-      const studentName = (studentsById[payment.student_id] ?? "").toLowerCase();
-      const matchesSearch =
-        normalizedSearch.length === 0 ||
-        studentName.includes(normalizedSearch) ||
-        payment.status.toLowerCase().includes(normalizedSearch);
-
-      return matchesStatus && matchesSearch;
+  const navigateWithUpdates = (updates: Record<string, string | null | undefined>) => {
+    startTransition(() => {
+      router.replace(buildUrlWithUpdatedSearchParams(pathname, searchParams, updates), { scroll: false });
     });
-  }, [payments, searchTerm, statusFilter, studentsById]);
+  };
 
   const createPayment = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoading(true);
     setError(null);
+
     try {
-      const created = await apiRequest<Payment>("/api/payments", {
+      await apiRequest<Payment>("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -66,7 +73,16 @@ export function PaymentsManager({ students, initialPayments }: PaymentsManagerPr
           date: form.date
         })
       });
-      setPayments((prev) => [created, ...prev]);
+
+      startTransition(() => {
+        router.replace(
+          buildUrlWithUpdatedSearchParams(pathname, searchParams, {
+            student: form.studentId,
+            page: null
+          }),
+          { scroll: false }
+        );
+      });
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Error inesperado.");
     } finally {
@@ -75,20 +91,22 @@ export function PaymentsManager({ students, initialPayments }: PaymentsManagerPr
   };
 
   const updatePaymentStatus = async (paymentId: string, status: "paid" | "pending" | "overdue") => {
-    const updated = await apiRequest<Payment>("/api/payments", {
+    await apiRequest<Payment>("/api/payments", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: paymentId, status })
     });
-    setPayments((prev) => prev.map((payment) => (payment.id === updated.id ? updated : payment)));
+    startTransition(() => {
+      router.refresh();
+    });
   };
 
   return (
     <section className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard title="Ingresos del mes" value={`$${monthlyRevenue.toFixed(2)}`} />
-        <StatCard title="Pagos pendientes" value={String(pendingCount)} />
-        <StatCard title="Pagos vencidos" value={String(overdueCount)} />
+        <StatCard title="Ingresos del mes" value={`$${summary.monthlyRevenue.toFixed(2)}`} />
+        <StatCard title="Pagos pendientes" value={String(summary.pendingCount)} />
+        <StatCard title="Pagos vencidos" value={String(summary.overdueCount)} />
       </div>
 
       <article className="card p-5">
@@ -132,7 +150,7 @@ export function PaymentsManager({ students, initialPayments }: PaymentsManagerPr
           />
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || isPending || !form.studentId}
             className="md:col-span-4 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
             Guardar pago
@@ -142,31 +160,102 @@ export function PaymentsManager({ students, initialPayments }: PaymentsManagerPr
       </article>
 
       <article className="card p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-slate-900">Tabla de pagos</h2>
-          <p className="text-sm text-slate-500">Resultados: {filteredPayments.length}</p>
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_220px]">
-          <input
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            placeholder="Buscar por alumno o estado"
-          />
+        <div className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr_1fr_auto]">
           <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as "all" | "pending" | "paid" | "overdue")}
+            value={filters.selectedStudentId}
+            onChange={(event) =>
+              navigateWithUpdates({
+                student: event.target.value === "all" ? null : event.target.value,
+                page: null
+              })
+            }
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            disabled={isPending}
+          >
+            <option value="all">Todos los alumnos</option>
+            {students.map((student) => (
+              <option key={student.id} value={student.id}>
+                {student.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filters.status}
+            onChange={(event) =>
+              navigateWithUpdates({
+                status: event.target.value === "all" ? null : event.target.value,
+                page: null
+              })
+            }
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            disabled={isPending}
           >
             <option value="all">Todos los estados</option>
             <option value="pending">Pendiente</option>
             <option value="paid">Pagado</option>
             <option value="overdue">Vencido</option>
           </select>
+          <input
+            type="date"
+            value={filters.startDate}
+            onChange={(event) => navigateWithUpdates({ start: event.target.value || "all", page: null })}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            disabled={isPending}
+          />
+          <input
+            type="date"
+            value={filters.endDate}
+            onChange={(event) => navigateWithUpdates({ end: event.target.value || null, page: null })}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            disabled={isPending}
+          />
+          <button
+            type="button"
+            onClick={() => navigateWithUpdates({ student: null, status: null, start: null, end: null, page: null })}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700"
+            disabled={isPending}
+          >
+            Resetear
+          </button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => navigateWithUpdates({ start: getDateOffset(30), page: null })}
+            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700"
+            disabled={isPending}
+          >
+            30 días
+          </button>
+          <button
+            type="button"
+            onClick={() => navigateWithUpdates({ start: getDateOffset(90), page: null })}
+            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700"
+            disabled={isPending}
+          >
+            90 días
+          </button>
+          <button
+            type="button"
+            onClick={() => navigateWithUpdates({ start: "all", page: null })}
+            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700"
+            disabled={isPending}
+          >
+            Todo
+          </button>
         </div>
         <div className="mt-4">
-          <PaymentTable payments={filteredPayments} studentsById={studentsById} onUpdateStatus={updatePaymentStatus} />
+          <PaymentTable payments={payments} studentsById={studentsById} onUpdateStatus={updatePaymentStatus} />
         </div>
+        <PaginationControls
+          page={filters.page}
+          hasNextPage={hasNextPage}
+          itemCount={payments.length}
+          pageSize={pageSize}
+          itemLabel="pagos"
+          disabled={isPending}
+          onPageChange={(nextPage) => navigateWithUpdates({ page: String(nextPage) })}
+        />
       </article>
     </section>
   );

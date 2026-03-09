@@ -9,6 +9,7 @@ import {
   getDateOffset,
   getTodayIso
 } from "@/lib/dashboard/reporting";
+import { normalizeDateParam, parseScalarParam } from "@/lib/search-params";
 import { DashboardFilterState, DashboardViewModel } from "@/lib/dashboard/types";
 import { Payment, ProgressEntry, Student, StudentGoal } from "@/types/domain";
 
@@ -16,26 +17,6 @@ interface DashboardDataParams {
   supabase: any;
   students: Student[];
   searchParams?: { [key: string]: string | string[] | undefined };
-}
-
-function parseScalar(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function normalizeDate(value: string | undefined, fallback: string) {
-  if (value === "all") {
-    return "";
-  }
-
-  if (!value) {
-    return fallback;
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return value;
-  }
-
-  return fallback;
 }
 
 function getPreviousMonthStart(dateValue: string) {
@@ -72,9 +53,9 @@ export async function getDashboardData({ supabase, students, searchParams }: Das
 }> {
   const today = getTodayIso();
   const defaultStartDate = getDateOffset(30);
-  const selectedStudentParam = parseScalar(searchParams?.student);
-  const startDate = normalizeDate(parseScalar(searchParams?.start), defaultStartDate);
-  const endDate = normalizeDate(parseScalar(searchParams?.end), today);
+  const selectedStudentParam = parseScalarParam(searchParams?.student);
+  const startDate = normalizeDateParam(searchParams?.start, defaultStartDate);
+  const endDate = normalizeDateParam(searchParams?.end, today);
 
   const selectedStudentId =
     selectedStudentParam && students.some((student) => student.id === selectedStudentParam) ? selectedStudentParam : "all";
