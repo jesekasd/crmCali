@@ -3,70 +3,84 @@
 import { useMemo, useState } from "react";
 import { ProgressChart } from "@/components/ProgressChart";
 import { StatCard } from "@/components/StatCard";
-import { Payment, ProgressEntry, Student } from "@/types/domain";
+import { DashboardAlertsPanel } from "@/components/dashboard/DashboardAlertsPanel";
+import { DashboardExportActions } from "@/components/dashboard/DashboardExportActions";
+import { DashboardGoalsPanel } from "@/components/dashboard/DashboardGoalsPanel";
+import { DashboardRecentActivity } from "@/components/dashboard/DashboardRecentActivity";
+import { DashboardStudentSummary } from "@/components/dashboard/DashboardStudentSummary";
+import { DashboardTrendGrid } from "@/components/dashboard/DashboardTrendGrid";
+import { downloadDashboardCsv, printDashboardReport } from "@/lib/dashboard/export";
+import {
+  buildChartData,
+  buildCoverageCount,
+  buildGoalAlerts,
+  buildGoalSnapshots,
+  buildMonthlyTrendMetrics,
+  buildPerformanceSummary,
+  buildStudentRows,
+  filterGoals,
+  filterPayments,
+  filterProgressEntries,
+  getDateOffset
+} from "@/lib/dashboard/reporting";
+import { GoalMetric, Payment, ProgressEntry, Student, StudentGoal } from "@/types/domain";
 
 interface DashboardReportsProps {
   students: Student[];
   progressEntries: ProgressEntry[];
   payments: Payment[];
+  goals: StudentGoal[];
   activeStudentCount: number;
-}
-
-function getDateOffset(days: number) {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return date.toISOString().slice(0, 10);
-}
-
-function inDateRange(value: string, startDate: string, endDate: string) {
-  if (startDate && value < startDate) {
-    return false;
-  }
-
-  if (endDate && value > endDate) {
-    return false;
-  }
-
-  return true;
 }
 
 export function DashboardReports({
   students,
   progressEntries,
   payments,
+  goals: initialGoals,
   activeStudentCount
 }: DashboardReportsProps) {
   const [selectedStudentId, setSelectedStudentId] = useState("all");
   const [startDate, setStartDate] = useState(getDateOffset(30));
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [goals, setGoals] = useState<StudentGoal[]>(initialGoals);
 
   const studentsById = useMemo(() => Object.fromEntries(students.map((student) => [student.id, student])), [students]);
 
+  const studentScopedProgress = useMemo(() => {
+    return selectedStudentId === "all"
+      ? progressEntries
+      : progressEntries.filter((entry) => entry.student_id === selectedStudentId);
+  }, [progressEntries, selectedStudentId]);
+
+  const studentScopedPayments = useMemo(() => {
+    return selectedStudentId === "all" ? payments : payments.filter((payment) => payment.student_id === selectedStudentId);
+  }, [payments, selectedStudentId]);
+
+  const studentScopedGoals = useMemo(() => filterGoals(goals, selectedStudentId), [goals, selectedStudentId]);
+
   const filteredProgress = useMemo(() => {
-    return progressEntries.filter((entry) => {
-      const matchesStudent = selectedStudentId === "all" ? true : entry.student_id === selectedStudentId;
-      return matchesStudent && inDateRange(entry.date, startDate, endDate);
-    });
+    return filterProgressEntries(progressEntries, selectedStudentId, startDate, endDate);
   }, [progressEntries, selectedStudentId, startDate, endDate]);
 
   const filteredPayments = useMemo(() => {
-    return payments.filter((payment) => {
-      const matchesStudent = selectedStudentId === "all" ? true : payment.student_id === selectedStudentId;
-      return matchesStudent && inDateRange(payment.date, startDate, endDate);
-    });
+    return filterPayments(payments, selectedStudentId, startDate, endDate);
   }, [payments, selectedStudentId, startDate, endDate]);
 
-  const chartData = useMemo(() => {
+  const chartData = useMemo(() => buildChartData(filteredProgress), [filteredProgress]);
+  const performanceSummary = useMemo(() => buildPerformanceSummary(filteredProgress), [filteredProgress]);
+  const coverageCount = useMemo(() => {
+    return buildCoverageCount(filteredProgress, filteredPayments, selectedStudentId, studentsById);
+  }, [filteredPayments, filteredProgress, selectedStudentId, studentsById]);
+  const studentRows = useMemo(() => {
+    return buildStudentRows(students, filteredProgress, filteredPayments, selectedStudentId);
+  }, [filteredPayments, filteredProgress, selectedStudentId, students]);
+
+  const recentEntries = useMemo(() => {
     return filteredProgress
       .slice()
-      .sort((left, right) => left.date.localeCompare(right.date))
-      .map((entry) => ({
-        date: entry.date,
-        pullups: entry.pullups,
-        pushups: entry.pushups,
-        muscle_ups: entry.muscle_ups,
-        handstand_seconds: entry.handstand_seconds
-      }));
+      .sort((left, right) => right.date.localeCompare(left.date))
+      .slice(0, 10);
   }, [filteredProgress]);
 
   const paidRevenue = useMemo(() => {
@@ -81,88 +95,96 @@ export function DashboardReports({
       .reduce((total, payment) => total + Number(payment.amount), 0);
   }, [filteredPayments]);
 
-  const coverageCount = useMemo(() => {
-    if (selectedStudentId !== "all") {
-      return studentsById[selectedStudentId] ? 1 : 0;
-    }
+  const monthlyTrendMetrics = useMemo(() => {
+    return buildMonthlyTrendMetrics(studentScopedProgress, studentScopedPayments);
+  }, [studentScopedPayments, studentScopedProgress]);
 
-    const ids = new Set<string>();
-    filteredProgress.forEach((entry) => ids.add(entry.student_id));
-    filteredPayments.forEach((payment) => ids.add(payment.student_id));
-    return ids.size;
-  }, [filteredPayments, filteredProgress, selectedStudentId, studentsById]);
+  const goalSnapshots = useMemo(() => {
+    return buildGoalSnapshots(studentScopedGoals, studentScopedProgress, studentsById);
+  }, [studentScopedGoals, studentScopedProgress, studentsById]);
 
-  const performanceSummary = useMemo(() => {
-    return filteredProgress.reduce(
-      (summary, entry) => ({
-        pullups: Math.max(summary.pullups, entry.pullups),
-        pushups: Math.max(summary.pushups, entry.pushups),
-        muscleUps: Math.max(summary.muscleUps, entry.muscle_ups),
-        handstand: Math.max(summary.handstand, entry.handstand_seconds)
-      }),
-      { pullups: 0, pushups: 0, muscleUps: 0, handstand: 0 }
-    );
-  }, [filteredProgress]);
-
-  const recentEntries = useMemo(() => {
-    return filteredProgress
-      .slice()
-      .sort((left, right) => right.date.localeCompare(left.date))
-      .slice(0, 10);
-  }, [filteredProgress]);
-
-  const studentRows = useMemo(() => {
-    return students
-      .map((student) => {
-        const progressForStudent = filteredProgress.filter((entry) => entry.student_id === student.id);
-        const paymentsForStudent = filteredPayments.filter((payment) => payment.student_id === student.id);
-
-        if (selectedStudentId === "all" && progressForStudent.length === 0 && paymentsForStudent.length === 0) {
-          return null;
-        }
-
-        if (selectedStudentId !== "all" && student.id !== selectedStudentId) {
-          return null;
-        }
-
-        const paidForStudent = paymentsForStudent
-          .filter((payment) => payment.status === "paid")
-          .reduce((total, payment) => total + Number(payment.amount), 0);
-
-        const latestEntry = progressForStudent
-          .slice()
-          .sort((left, right) => right.date.localeCompare(left.date))[0];
-
-        const bestPullups = progressForStudent.reduce((best, entry) => Math.max(best, entry.pullups), 0);
-
-        return {
-          id: student.id,
-          name: student.name,
-          level: student.level,
-          records: progressForStudent.length,
-          latestDate: latestEntry?.date ?? "-",
-          bestPullups,
-          paidForStudent
-        };
-      })
-      .filter((value): value is NonNullable<typeof value> => Boolean(value))
-      .sort((left, right) => right.records - left.records || right.paidForStudent - left.paidForStudent);
-  }, [filteredPayments, filteredProgress, selectedStudentId, students]);
+  const alerts = useMemo(() => {
+    return buildGoalAlerts(studentScopedGoals, studentScopedProgress, studentsById);
+  }, [studentScopedGoals, studentScopedProgress, studentsById]);
 
   const activeFilterLabel =
     selectedStudentId === "all" ? "Todos los alumnos" : (studentsById[selectedStudentId]?.name ?? "Alumno");
 
+  const createGoal = async (payload: {
+    studentId: string;
+    metric: GoalMetric;
+    targetValue: number;
+    targetDate: string;
+    notes: string;
+  }) => {
+    const response = await fetch("/api/student-goals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error("No se pudo crear la meta.");
+    }
+
+    const created = (await response.json()) as StudentGoal;
+    setGoals((current) => [...current, created]);
+  };
+
+  const updateGoal = async (goalId: string, payload: Partial<Pick<StudentGoal, "status">>) => {
+    const response = await fetch(`/api/student-goals/${goalId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error("No se pudo actualizar la meta.");
+    }
+
+    const updated = (await response.json()) as StudentGoal;
+    setGoals((current) => current.map((goal) => (goal.id === goalId ? updated : goal)));
+  };
+
+  const deleteGoal = async (goalId: string) => {
+    const response = await fetch(`/api/student-goals/${goalId}`, { method: "DELETE" });
+
+    if (!response.ok) {
+      throw new Error("No se pudo eliminar la meta.");
+    }
+
+    setGoals((current) => current.filter((goal) => goal.id !== goalId));
+  };
+
+  const exportCsv = () => {
+    downloadDashboardCsv({
+      studentRows,
+      progressEntries: filteredProgress,
+      payments: filteredPayments,
+      trendMetrics: monthlyTrendMetrics,
+      studentNames: Object.fromEntries(students.map((student) => [student.id, student.name])),
+      fileName: `calistrack-report-${selectedStudentId}-${endDate || "current"}.csv`
+    });
+  };
+
+  const exportPdf = () => {
+    printDashboardReport(`CalisTrack report - ${activeFilterLabel}`);
+  };
+
   return (
-    <section className="space-y-6">
-      <header>
-        <h2 className="text-2xl font-semibold text-slate-900">Dashboard</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Reportes por alumno y rango de fechas para seguimiento operativo y rendimiento.
-        </p>
+    <section id="dashboard-report-root" className="space-y-6">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-semibold text-slate-900">Dashboard</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Reportes modulares por alumno y rango de fechas, pensados para free tier y crecimiento sin monolitos.
+          </p>
+        </div>
+        <DashboardExportActions onExportCsv={exportCsv} onExportPdf={exportPdf} />
       </header>
 
       <article className="card p-5">
-        <div className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr_auto]">
+        <div data-export-hidden="true" className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr_auto]">
           <select
             value={selectedStudentId}
             onChange={(event) => setSelectedStudentId(event.target.value)}
@@ -198,7 +220,7 @@ export function DashboardReports({
             Resetear
           </button>
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div data-export-hidden="true" className="mt-3 flex flex-wrap gap-2">
           <button
             onClick={() => setStartDate(getDateOffset(7))}
             className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700"
@@ -230,11 +252,7 @@ export function DashboardReports({
       </article>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Alumnos activos"
-          value={String(activeStudentCount)}
-          hint={`En reporte: ${coverageCount}`}
-        />
+        <StatCard title="Alumnos activos" value={String(activeStudentCount)} hint={`En reporte: ${coverageCount}`} />
         <StatCard
           title="Ingresos cobrados"
           value={`$${paidRevenue.toFixed(2)}`}
@@ -243,14 +261,16 @@ export function DashboardReports({
         <StatCard
           title="Registros de progreso"
           value={String(filteredProgress.length)}
-          hint={`Pagos en ventana: ${filteredPayments.length}`}
+          hint={`Alertas activas: ${alerts.length}`}
         />
         <StatCard
           title="Mejor marca"
           value={performanceSummary.pullups > 0 ? `${performanceSummary.pullups} pullups` : "Sin datos"}
-          hint={`Handstand max: ${performanceSummary.handstand}s | Muscle up max: ${performanceSummary.muscleUps}`}
+          hint={`Metas activas: ${goalSnapshots.filter((goal) => goal.status === "active").length}`}
         />
       </div>
+
+      <DashboardTrendGrid metrics={monthlyTrendMetrics} />
 
       {chartData.length > 0 ? (
         <ProgressChart title="Evolucion filtrada del rendimiento" data={chartData} />
@@ -260,66 +280,21 @@ export function DashboardReports({
         </article>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <article className="card p-5">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-lg font-semibold text-slate-900">Resumen por alumno</h3>
-            <span className="text-sm text-slate-500">{studentRows.length} filas</span>
-          </div>
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="text-slate-500">
-                <tr>
-                  <th className="pb-2 pr-4">Alumno</th>
-                  <th className="pb-2 pr-4">Nivel</th>
-                  <th className="pb-2 pr-4">Registros</th>
-                  <th className="pb-2 pr-4">Ultimo</th>
-                  <th className="pb-2 pr-4">Mejor pullups</th>
-                  <th className="pb-2 pr-4">Cobrado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {studentRows.map((row) => (
-                  <tr key={row.id} className="border-t border-slate-100">
-                    <td className="py-2 pr-4 font-medium text-slate-900">{row.name}</td>
-                    <td className="py-2 pr-4 text-slate-600">{row.level}</td>
-                    <td className="py-2 pr-4">{row.records}</td>
-                    <td className="py-2 pr-4">{row.latestDate}</td>
-                    <td className="py-2 pr-4">{row.bestPullups}</td>
-                    <td className="py-2 pr-4">${row.paidForStudent.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </article>
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <DashboardGoalsPanel
+          students={students}
+          selectedStudentId={selectedStudentId}
+          goals={goalSnapshots}
+          onCreateGoal={createGoal}
+          onUpdateGoal={updateGoal}
+          onDeleteGoal={deleteGoal}
+        />
+        <DashboardAlertsPanel alerts={alerts} />
+      </div>
 
-        <article className="card p-5">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-lg font-semibold text-slate-900">Actividad reciente</h3>
-            <span className="text-sm text-slate-500">{recentEntries.length} registros</span>
-          </div>
-          <div className="mt-4 space-y-3">
-            {recentEntries.length === 0 ? (
-              <p className="text-sm text-slate-600">No hay actividad reciente en la ventana seleccionada.</p>
-            ) : (
-              recentEntries.map((entry) => (
-                <div key={entry.id} className="rounded-xl border border-slate-200 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-medium text-slate-900">
-                      {studentsById[entry.student_id]?.name ?? "Alumno desconocido"}
-                    </span>
-                    <span className="text-xs text-slate-500">{entry.date}</span>
-                  </div>
-                  <p className="mt-2 text-sm text-slate-600">
-                    Pullups: {entry.pullups} | Pushups: {entry.pushups} | Muscle up: {entry.muscle_ups} | Handstand:{" "}
-                    {entry.handstand_seconds}s
-                  </p>
-                </div>
-              ))
-            )}
-          </div>
-        </article>
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <DashboardStudentSummary rows={studentRows} />
+        <DashboardRecentActivity entries={recentEntries} studentsById={studentsById} />
       </div>
     </section>
   );

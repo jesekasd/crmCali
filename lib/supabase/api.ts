@@ -25,3 +25,29 @@ export async function getCoachContext() {
 
   return { supabase, user, coachId: coach.id };
 }
+
+export async function coachOwnsStudent(supabase: any, coachId: string, studentId: string) {
+  const { data: student, error } = await supabase
+    .from("students")
+    .select("id")
+    .eq("id", studentId)
+    .eq("coach_id", coachId)
+    .maybeSingle();
+
+  return !error && Boolean(student);
+}
+
+export async function getOwnedGoal(supabase: any, coachId: string, goalId: string) {
+  const { data: goal, error } = await supabase.from("student_goals").select("*").eq("id", goalId).maybeSingle();
+
+  if (error || !goal) {
+    return null;
+  }
+
+  const isOwner = await coachOwnsStudent(supabase, coachId, goal.student_id);
+  if (!isOwner) {
+    return null;
+  }
+
+  return goal;
+}

@@ -63,10 +63,22 @@ create table if not exists public.payments (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.student_goals (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students(id) on delete cascade,
+  metric text not null check (metric in ('pullups', 'pushups', 'muscle_ups', 'handstand_seconds')),
+  target_value integer not null check (target_value >= 0),
+  target_date date not null,
+  status text not null default 'active' check (status in ('active', 'completed', 'archived')),
+  notes text,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists idx_students_coach on public.students(coach_id);
 create index if not exists idx_workouts_coach on public.workouts(coach_id);
 create index if not exists idx_progress_student_date on public.progress(student_id, date desc);
 create index if not exists idx_payments_student_date on public.payments(student_id, date desc);
+create index if not exists idx_student_goals_student on public.student_goals(student_id, target_date desc);
 
 -- Helper function to resolve coach ID from auth.uid()
 create or replace function public.current_coach_id()
@@ -123,6 +135,7 @@ alter table public.workouts enable row level security;
 alter table public.workout_assignments enable row level security;
 alter table public.progress enable row level security;
 alter table public.payments enable row level security;
+alter table public.student_goals enable row level security;
 
 -- users
 drop policy if exists "users_select_own" on public.users;
@@ -205,6 +218,27 @@ with check (
 -- payments
 drop policy if exists "payments_manage_own" on public.payments;
 create policy "payments_manage_own" on public.payments
+for all
+using (
+  exists (
+    select 1
+    from public.students s
+    where s.id = student_id
+      and s.coach_id = public.current_coach_id()
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.students s
+    where s.id = student_id
+      and s.coach_id = public.current_coach_id()
+  )
+);
+
+-- student goals
+drop policy if exists "student_goals_manage_own" on public.student_goals;
+create policy "student_goals_manage_own" on public.student_goals
 for all
 using (
   exists (

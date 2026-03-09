@@ -1,6 +1,6 @@
 import { DashboardReports } from "@/components/DashboardReports";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { Payment, ProgressEntry, Student } from "@/types/domain";
+import { Payment, ProgressEntry, Student, StudentGoal } from "@/types/domain";
 
 export default async function DashboardPage() {
   const supabase = await createServerSupabaseClient();
@@ -34,15 +34,18 @@ export default async function DashboardPage() {
 
   let payments: Payment[] = [];
   let progressEntries: ProgressEntry[] = [];
+  let goals: StudentGoal[] = [];
 
   if (studentIds.length > 0) {
-    const [{ data: paymentRows }, { data: progressRows }] = await Promise.all([
+    const [{ data: paymentRows }, { data: progressRows }, { data: goalRows }] = await Promise.all([
       supabase.from("payments").select("*").in("student_id", studentIds).order("date", { ascending: false }),
-      supabase.from("progress").select("*").in("student_id", studentIds).order("date", { ascending: false })
+      supabase.from("progress").select("*").in("student_id", studentIds).order("date", { ascending: false }),
+      supabase.from("student_goals").select("*").in("student_id", studentIds).order("target_date", { ascending: true })
     ]);
 
     payments = (paymentRows ?? []) as Payment[];
     progressEntries = (progressRows ?? []) as ProgressEntry[];
+    goals = (goalRows ?? []) as StudentGoal[];
   }
 
   return (
@@ -50,6 +53,7 @@ export default async function DashboardPage() {
       students={students}
       progressEntries={progressEntries}
       payments={payments}
+      goals={goals}
       activeStudentCount={activeStudentCount}
     />
   );

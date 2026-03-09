@@ -176,6 +176,38 @@ export interface Database {
         };
         Relationships: [];
       };
+      student_goals: {
+        Row: {
+          id: string;
+          student_id: string;
+          metric: string;
+          target_value: number;
+          target_date: string;
+          status: string;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          student_id: string;
+          metric: string;
+          target_value: number;
+          target_date: string;
+          status?: string;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          student_id?: string;
+          metric?: string;
+          target_value?: number;
+          target_date?: string;
+          status?: string;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {};
     Functions: {};
