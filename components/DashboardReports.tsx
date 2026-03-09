@@ -11,15 +11,13 @@ import { DashboardRecentActivity } from "@/components/dashboard/DashboardRecentA
 import { DashboardStudentSummary } from "@/components/dashboard/DashboardStudentSummary";
 import { DashboardTrendGrid } from "@/components/dashboard/DashboardTrendGrid";
 import { apiRequest } from "@/lib/client/api";
-import { downloadDashboardCsv, printDashboardReport } from "@/lib/dashboard/export";
+import { printDashboardReport } from "@/lib/dashboard/export";
 import { getDateOffset, getTodayIso } from "@/lib/dashboard/reporting";
 import { DashboardFilterState, DashboardViewModel } from "@/lib/dashboard/types";
-import { GoalMetric, Payment, ProgressEntry, Student, StudentGoal } from "@/types/domain";
+import { GoalMetric, ProgressEntry, Student, StudentGoal } from "@/types/domain";
 
 interface DashboardReportsProps {
   students: Student[];
-  filteredProgress: ProgressEntry[];
-  filteredPayments: Payment[];
   recentEntries: ProgressEntry[];
   viewModel: DashboardViewModel;
 }
@@ -31,8 +29,6 @@ function buildDashboardUrl(pathname: string, params: URLSearchParams) {
 
 export function DashboardReports({
   students,
-  filteredProgress,
-  filteredPayments,
   recentEntries,
   viewModel
 }: DashboardReportsProps) {
@@ -126,14 +122,10 @@ export function DashboardReports({
   };
 
   const exportCsv = () => {
-    downloadDashboardCsv({
-      studentRows,
-      progressEntries: filteredProgress,
-      payments: filteredPayments,
-      trendMetrics,
-      studentNames: Object.fromEntries(students.map((student) => [student.id, student.name])),
-      fileName: `calistrack-report-${filters.selectedStudentId}-${filters.endDate || "current"}.csv`
-    });
+    const exportUrl = buildDashboardUrl("/api/dashboard/export", new URLSearchParams(searchParams.toString()));
+    const anchor = document.createElement("a");
+    anchor.href = exportUrl;
+    anchor.click();
   };
 
   const exportPdf = () => {

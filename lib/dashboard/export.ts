@@ -18,6 +18,23 @@ export function downloadDashboardCsv(params: {
   studentNames: Record<string, string>;
   fileName: string;
 }) {
+  const csv = buildDashboardCsv(params);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = params.fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+export function buildDashboardCsv(params: {
+  studentRows: DashboardStudentRow[];
+  progressEntries: ProgressEntry[];
+  payments: Payment[];
+  trendMetrics: DashboardTrendMetric[];
+  studentNames: Record<string, string>;
+}) {
   const sections = [
     ["Resumen por alumno"],
     ["Alumno", "Nivel", "Registros", "Ultimo", "Mejor pullups", "Cobrado"],
@@ -60,14 +77,7 @@ export function downloadDashboardCsv(params: {
     ])
   ];
 
-  const csv = sections.map((row) => row.map((value) => escapeCsv(value)).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = params.fileName;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  return sections.map((row) => row.map((value) => escapeCsv(value)).join(",")).join("\n");
 }
 
 export function printDashboardReport(reportTitle: string) {
@@ -103,4 +113,8 @@ export function printDashboardReport(reportTitle: string) {
   printWindow.document.close();
   printWindow.focus();
   printWindow.print();
+}
+
+export function getDashboardExportFileName(selectedStudentId: string, endDate: string) {
+  return `calistrack-report-${selectedStudentId}-${endDate || "current"}.csv`;
 }

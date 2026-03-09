@@ -15,19 +15,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const { supabase, coachId } = context;
   const students = await getCoachStudents(supabase, coachId);
 
-  const { filteredPayments, filteredProgress, recentEntries, viewModel } = await getDashboardData({
+  const { recentEntries, viewModel } = await getDashboardData({
     supabase,
     students,
     searchParams
   });
 
-  return (
-    <DashboardReports
-      students={students}
-      filteredProgress={filteredProgress}
-      filteredPayments={filteredPayments}
-      recentEntries={recentEntries}
-      viewModel={viewModel}
-    />
-  );
+  return <DashboardReports students={students} recentEntries={recentEntries} viewModel={viewModel} />;
 }
