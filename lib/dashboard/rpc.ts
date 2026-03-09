@@ -1,5 +1,5 @@
 import { buildMonthlyTrendMetrics, buildStudentRows } from "@/lib/dashboard/reporting";
-import { DashboardStudentRow, DashboardTrendMetric } from "@/lib/dashboard/types";
+import { DashboardPerformanceSummary, DashboardStudentRow, DashboardSummaryStats, DashboardTrendMetric } from "@/lib/dashboard/types";
 import { Payment, ProgressEntry, Student } from "@/types/domain";
 
 interface DashboardStudentSummaryRow {
@@ -19,7 +19,18 @@ interface DashboardTrendMetricRow {
   format: string;
 }
 
-function isFunctionMissingError(error: unknown) {
+interface DashboardSummaryStatsRow {
+  progress_count: number | string;
+  paid_revenue: number | string;
+  pending_revenue: number | string;
+  best_pullups: number | string;
+  best_pushups: number | string;
+  best_muscle_ups: number | string;
+  best_handstand: number | string;
+  coverage_count: number | string;
+}
+
+export function isFunctionMissingError(error: unknown) {
   return Boolean(
     error &&
       typeof error === "object" &&
@@ -29,33 +40,8 @@ function isFunctionMissingError(error: unknown) {
   );
 }
 
-export async function getDashboardTrendMetricsFromRpc(params: {
-  supabase: any;
-  studentIds: string[];
-  referenceDate: string;
-  fallbackProgress: ProgressEntry[];
-  fallbackPayments: Payment[];
-}) {
-  const { supabase, studentIds, referenceDate, fallbackProgress, fallbackPayments } = params;
-
-  if (studentIds.length === 0) {
-    return buildMonthlyTrendMetrics([], [], referenceDate);
-  }
-
-  const { data, error } = await supabase.rpc("dashboard_trend_metrics", {
-    p_student_ids: studentIds,
-    p_reference_date: referenceDate
-  });
-
-  if (error || !Array.isArray(data)) {
-    if (error && !isFunctionMissingError(error)) {
-      console.error("dashboard_trend_metrics rpc failed", error);
-    }
-
-    return buildMonthlyTrendMetrics(fallbackProgress, fallbackPayments, referenceDate);
-  }
-
-  return (data as DashboardTrendMetricRow[])
+export function mapDashboardTrendMetrics(rows: DashboardTrendMetricRow[]) {
+  return rows
     .slice()
     .sort((left, right) => left.sort_order - right.sort_order)
     .map(
@@ -69,38 +55,13 @@ export async function getDashboardTrendMetricsFromRpc(params: {
     );
 }
 
-export async function getDashboardStudentRowsFromRpc(params: {
-  supabase: any;
-  students: Student[];
-  studentIds: string[];
-  startDate: string;
-  endDate: string;
-  selectedStudentId: string;
-  fallbackProgress: ProgressEntry[];
-  fallbackPayments: Payment[];
-}) {
-  const { supabase, students, studentIds, startDate, endDate, selectedStudentId, fallbackProgress, fallbackPayments } = params;
-
-  if (studentIds.length === 0) {
-    return [] as DashboardStudentRow[];
-  }
-
-  const { data, error } = await supabase.rpc("dashboard_student_summary", {
-    p_student_ids: studentIds,
-    p_start_date: startDate || null,
-    p_end_date: endDate || null
-  });
-
-  if (error || !Array.isArray(data)) {
-    if (error && !isFunctionMissingError(error)) {
-      console.error("dashboard_student_summary rpc failed", error);
-    }
-
-    return buildStudentRows(students, fallbackProgress, fallbackPayments, selectedStudentId);
-  }
-
+export function mapDashboardStudentRows(
+  rows: DashboardStudentSummaryRow[],
+  students: Student[],
+  selectedStudentId: string
+) {
   const rowsByStudentId = new Map(
-    (data as DashboardStudentSummaryRow[]).map((row) => [
+    rows.map((row) => [
       row.student_id,
       {
         records: Number(row.records),
@@ -135,4 +96,175 @@ export async function getDashboardStudentRowsFromRpc(params: {
     })
     .filter((value): value is DashboardStudentRow => Boolean(value))
     .sort((left, right) => right.records - left.records || right.paidForStudent - left.paidForStudent);
+}
+
+export function mapDashboardSummaryStats(params: {
+  row: DashboardSummaryStatsRow;
+  activeStudentCount: number;
+  alertCount: number;
+  activeGoalsCount: number;
+}) {
+  const { row, activeStudentCount, alertCount, activeGoalsCount } = params;
+  const performance: DashboardPerformanceSummary = {
+    pullups: Number(row.best_pullups),
+    pushups: Number(row.best_pushups),
+    muscleUps: Number(row.best_muscle_ups),
+    handstand: Number(row.best_handstand)
+  };
+
+  return {
+    activeStudentCount,
+    coverageCount: Number(row.coverage_count),
+    paidRevenue: Number(row.paid_revenue),
+    pendingRevenue: Number(row.pending_revenue),
+    progressCount: Number(row.progress_count),
+    alertCount,
+    activeGoalsCount,
+    performance
+  } satisfies DashboardSummaryStats;
+}
+
+export async function getDashboardTrendMetricsFromRpc(params: {
+  supabase: any;
+  studentIds: string[];
+  referenceDate: string;
+  fallbackProgress: ProgressEntry[];
+  fallbackPayments: Payment[];
+}) {
+  const { supabase, studentIds, referenceDate, fallbackProgress, fallbackPayments } = params;
+
+  if (studentIds.length === 0) {
+    return buildMonthlyTrendMetrics([], [], referenceDate);
+  }
+
+  const { data, error } = await supabase.rpc("dashboard_trend_metrics", {
+    p_student_ids: studentIds,
+    p_reference_date: referenceDate
+  });
+
+  if (error || !Array.isArray(data)) {
+    if (error && !isFunctionMissingError(error)) {
+      console.error("dashboard_trend_metrics rpc failed", error);
+    }
+
+    return buildMonthlyTrendMetrics(fallbackProgress, fallbackPayments, referenceDate);
+  }
+
+  return mapDashboardTrendMetrics(data as DashboardTrendMetricRow[]);
+}
+
+export async function getDashboardStudentRowsFromRpc(params: {
+  supabase: any;
+  students: Student[];
+  studentIds: string[];
+  startDate: string;
+  endDate: string;
+  selectedStudentId: string;
+  fallbackProgress: ProgressEntry[];
+  fallbackPayments: Payment[];
+}) {
+  const { supabase, students, studentIds, startDate, endDate, selectedStudentId, fallbackProgress, fallbackPayments } = params;
+
+  if (studentIds.length === 0) {
+    return [] as DashboardStudentRow[];
+  }
+
+  const { data, error } = await supabase.rpc("dashboard_student_summary", {
+    p_student_ids: studentIds,
+    p_start_date: startDate || null,
+    p_end_date: endDate || null
+  });
+
+  if (error || !Array.isArray(data)) {
+    if (error && !isFunctionMissingError(error)) {
+      console.error("dashboard_student_summary rpc failed", error);
+    }
+
+    return buildStudentRows(students, fallbackProgress, fallbackPayments, selectedStudentId);
+  }
+
+  return mapDashboardStudentRows(data as DashboardStudentSummaryRow[], students, selectedStudentId);
+}
+
+export async function getDashboardSummaryStatsFromRpc(params: {
+  supabase: any;
+  studentIds: string[];
+  startDate: string;
+  endDate: string;
+  activeStudentCount: number;
+  alertCount: number;
+  activeGoalsCount: number;
+  fallbackProgress: ProgressEntry[];
+  fallbackPayments: Payment[];
+  fallbackCoverageCount: number;
+}) {
+  const {
+    supabase,
+    studentIds,
+    startDate,
+    endDate,
+    activeStudentCount,
+    alertCount,
+    activeGoalsCount,
+    fallbackProgress,
+    fallbackPayments,
+    fallbackCoverageCount
+  } = params;
+
+  if (studentIds.length === 0) {
+    return {
+      activeStudentCount,
+      coverageCount: 0,
+      paidRevenue: 0,
+      pendingRevenue: 0,
+      progressCount: 0,
+      alertCount,
+      activeGoalsCount,
+      performance: { pullups: 0, pushups: 0, muscleUps: 0, handstand: 0 }
+    } satisfies DashboardSummaryStats;
+  }
+
+  const { data, error } = await supabase.rpc("dashboard_summary_stats", {
+    p_student_ids: studentIds,
+    p_start_date: startDate || null,
+    p_end_date: endDate || null
+  });
+
+  if (error || !Array.isArray(data) || data.length === 0) {
+    if (error && !isFunctionMissingError(error)) {
+      console.error("dashboard_summary_stats rpc failed", error);
+    }
+
+    const performance: DashboardPerformanceSummary = fallbackProgress.reduce(
+      (summary, entry) => ({
+        pullups: Math.max(summary.pullups, entry.pullups),
+        pushups: Math.max(summary.pushups, entry.pushups),
+        muscleUps: Math.max(summary.muscleUps, entry.muscle_ups),
+        handstand: Math.max(summary.handstand, entry.handstand_seconds)
+      }),
+      { pullups: 0, pushups: 0, muscleUps: 0, handstand: 0 }
+    );
+
+    return {
+      activeStudentCount,
+      coverageCount: fallbackCoverageCount,
+      paidRevenue: fallbackPayments
+        .filter((payment) => payment.status === "paid")
+        .reduce((total, payment) => total + Number(payment.amount), 0),
+      pendingRevenue: fallbackPayments
+        .filter((payment) => payment.status !== "paid")
+        .reduce((total, payment) => total + Number(payment.amount), 0),
+      progressCount: fallbackProgress.length,
+      alertCount,
+      activeGoalsCount,
+      performance
+    } satisfies DashboardSummaryStats;
+  }
+
+  return mapDashboardSummaryStats({
+    row: data[0] as DashboardSummaryStatsRow,
+    activeStudentCount,
+    alertCount,
+    activeGoalsCount
+  });
 }

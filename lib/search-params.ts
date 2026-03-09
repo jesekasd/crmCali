@@ -47,6 +47,7 @@ export function normalizeTextParam(value: string | string[] | undefined) {
 
 export function getPaginationRange(page: number, pageSize: number) {
   const from = (page - 1) * pageSize;
+  // Supabase range end is inclusive, so this intentionally requests one extra row.
   const to = from + pageSize;
   return { from, to };
 }

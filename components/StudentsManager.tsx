@@ -1,8 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Student } from "@/types/domain";
+import { Student, StudentStatus } from "@/types/domain";
 import { StudentCard } from "@/components/StudentCard";
 import { PaginationControls } from "@/components/PaginationControls";
 import { apiRequest } from "@/lib/client/api";
@@ -12,7 +12,7 @@ interface StudentsManagerProps {
   students: Student[];
   filters: {
     search: string;
-    status: "all" | "active" | "inactive";
+    status: "all" | StudentStatus;
     page: number;
   };
   pageSize: number;
@@ -24,7 +24,7 @@ type StudentInput = {
   level: string;
   goal: string;
   start_date: string;
-  status: string;
+  status: Exclude<StudentStatus, "archived">;
 };
 
 const defaultForm = (): StudentInput => ({
@@ -91,8 +91,8 @@ export function StudentsManager({ students, filters, pageSize, hasNextPage }: St
     });
   };
 
-  const deleteStudent = async (id: string) => {
-    await apiRequest<{ ok: true }>(`/api/students/${id}`, { method: "DELETE" });
+  const archiveStudent = async (id: string) => {
+    await apiRequest<Student>(`/api/students/${id}`, { method: "DELETE" });
     startTransition(() => {
       const shouldMoveToPreviousPage = students.length === 1 && filters.page > 1;
       if (shouldMoveToPreviousPage) {
@@ -150,7 +150,9 @@ export function StudentsManager({ students, filters, pageSize, hasNextPage }: St
           />
           <select
             value={form.status}
-            onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
+            onChange={(event) =>
+              setForm((prev) => ({ ...prev, status: event.target.value as StudentInput["status"] }))
+            }
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
           >
             <option value="active">Activo</option>
@@ -189,6 +191,7 @@ export function StudentsManager({ students, filters, pageSize, hasNextPage }: St
             <option value="all">Todos los estados</option>
             <option value="active">Solo activos</option>
             <option value="inactive">Solo inactivos</option>
+            <option value="archived">Solo archivados</option>
           </select>
           <button
             type="submit"
@@ -219,10 +222,11 @@ export function StudentsManager({ students, filters, pageSize, hasNextPage }: St
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {students.map((student) => (
-            <StudentCard key={student.id} student={student} onSave={updateStudent} onDelete={deleteStudent} />
+            <StudentCard key={student.id} student={student} onSave={updateStudent} onDelete={archiveStudent} />
           ))}
         </div>
       )}
     </section>
   );
 }
+

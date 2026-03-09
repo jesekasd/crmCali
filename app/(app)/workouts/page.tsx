@@ -1,32 +1,30 @@
-import { WorkoutEditor } from "@/components/WorkoutEditor";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+﻿import { WorkoutEditor } from "@/components/WorkoutEditor";
+import { getCoachContext, getCoachStudents } from "@/lib/supabase/api";
 import { Student, Workout, WorkoutAssignment } from "@/types/domain";
 
 export default async function WorkoutsPage() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const context = await getCoachContext();
+  if ("error" in context) {
+    return context.error;
+  }
 
-  const { data: coach } = await supabase.from("coaches").select("id").eq("user_id", user!.id).maybeSingle();
+  const { supabase, coachId } = context;
 
   let students: Student[] = [];
   let workouts: Workout[] = [];
   let assignments: WorkoutAssignment[] = [];
 
-  if (coach) {
-    const [{ data: studentRows }, { data: workoutRows }, { data: assignmentRows }] = await Promise.all([
-      supabase.from("students").select("*").eq("coach_id", coach.id).order("name", { ascending: true }),
-      supabase.from("workouts").select("*").eq("coach_id", coach.id).order("created_at", { ascending: false }),
-      supabase.from("workout_assignments").select("*").order("assigned_at", { ascending: false })
-    ]);
+  const [studentRows, workoutResult, assignmentResult] = await Promise.all([
+    getCoachStudents(supabase, coachId),
+    supabase.from("workouts").select("*").eq("coach_id", coachId).order("created_at", { ascending: false }),
+    supabase.from("workout_assignments").select("*").order("assigned_at", { ascending: false })
+  ]);
 
-    students = (studentRows ?? []) as Student[];
-    workouts = (workoutRows ?? []) as Workout[];
+  students = studentRows as Student[];
+  workouts = (workoutResult.data ?? []) as Workout[];
 
-    const allowedStudentIds = new Set(students.map((student) => student.id));
-    assignments = (assignmentRows ?? []).filter((assignment) => allowedStudentIds.has(assignment.student_id)) as WorkoutAssignment[];
-  }
+  const allowedStudentIds = new Set(students.map((student) => student.id));
+  assignments = (assignmentResult.data ?? []).filter((assignment) => allowedStudentIds.has(assignment.student_id)) as WorkoutAssignment[];
 
   return (
     <section className="space-y-4">
@@ -38,3 +36,4 @@ export default async function WorkoutsPage() {
     </section>
   );
 }
+

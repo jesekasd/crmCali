@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCoachContext, getOwnedStudent, getOwnedWorkout, getOwnedWorkoutAssignment } from "@/lib/supabase/api";
+import { getCoachContext, getOwnedOperativeStudent, getOwnedWorkout, getOwnedWorkoutAssignment } from "@/lib/supabase/api";
 
 export async function POST(request: NextRequest) {
   const context = await getCoachContext();
@@ -15,11 +15,11 @@ export async function POST(request: NextRequest) {
   const { supabase, coachId } = context;
   const [workout, student] = await Promise.all([
     getOwnedWorkout(supabase, coachId, body.workoutId),
-    getOwnedStudent(supabase, coachId, body.studentId)
+    getOwnedOperativeStudent(supabase, coachId, body.studentId)
   ]);
 
   if (!workout || !student) {
-    return NextResponse.json({ error: "workout or student not found" }, { status: 404 });
+    return NextResponse.json({ error: "workout or student not found, or student is archived" }, { status: 404 });
   }
 
   const { data, error } = await supabase

@@ -57,10 +57,16 @@ export async function DELETE(_: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Student not found" }, { status: 404 });
   }
 
-  const { error } = await supabase.from("students").delete().eq("id", params.id);
+  const { data, error } = await supabase
+    .from("students")
+    .update({ status: "archived" })
+    .eq("id", params.id)
+    .select("*")
+    .single();
+
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(data);
 }

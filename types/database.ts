@@ -239,6 +239,23 @@ export interface Database {
           format: string;
         }[];
       };
+      dashboard_summary_stats: {
+        Args: {
+          p_student_ids: string[];
+          p_start_date?: string | null;
+          p_end_date?: string | null;
+        };
+        Returns: {
+          progress_count: number;
+          paid_revenue: number;
+          pending_revenue: number;
+          best_pullups: number;
+          best_pushups: number;
+          best_muscle_ups: number;
+          best_handstand: number;
+          coverage_count: number;
+        }[];
+      };
     };
     Enums: {};
     CompositeTypes: {};

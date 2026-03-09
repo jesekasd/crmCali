@@ -26,12 +26,18 @@ export async function getCoachContext() {
   return { supabase, user, coachId: coach.id };
 }
 
-export async function getCoachStudents(supabase: any, coachId: string) {
-  const { data, error } = await supabase
-    .from("students")
-    .select("*")
-    .eq("coach_id", coachId)
-    .order("name", { ascending: true });
+export async function getCoachStudents(
+  supabase: any,
+  coachId: string,
+  options?: { includeArchived?: boolean }
+) {
+  let query = supabase.from("students").select("*").eq("coach_id", coachId).order("name", { ascending: true });
+
+  if (!options?.includeArchived) {
+    query = query.neq("status", "archived");
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     return [];
@@ -40,8 +46,8 @@ export async function getCoachStudents(supabase: any, coachId: string) {
   return data ?? [];
 }
 
-export async function getCoachStudentIds(supabase: any, coachId: string) {
-  const students = await getCoachStudents(supabase, coachId);
+export async function getCoachStudentIds(supabase: any, coachId: string, options?: { includeArchived?: boolean }) {
+  const students = await getCoachStudents(supabase, coachId, options);
   return students.map((student: { id: string }) => student.id);
 }
 
@@ -58,6 +64,16 @@ export async function getOwnedStudent(supabase: any, coachId: string, studentId:
   }
 
   return data;
+}
+
+export async function getOwnedOperativeStudent(supabase: any, coachId: string, studentId: string) {
+  const student = await getOwnedStudent(supabase, coachId, studentId);
+
+  if (!student || student.status === "archived") {
+    return null;
+  }
+
+  return student;
 }
 
 export async function coachOwnsStudent(supabase: any, coachId: string, studentId: string) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Student } from "@/types/domain";
+import { Student, StudentStatus } from "@/types/domain";
 
 type StudentUpdatePayload = Partial<Pick<Student, "name" | "level" | "goal" | "start_date" | "status">>;
 
@@ -18,7 +18,7 @@ export function StudentCard({ student, onSave, onDelete }: StudentCardProps) {
     level: student.level,
     goal: student.goal ?? "",
     start_date: student.start_date,
-    status: student.status
+    status: student.status as StudentStatus
   });
   const [loading, setLoading] = useState(false);
 
@@ -36,6 +36,15 @@ export function StudentCard({ student, onSave, onDelete }: StudentCardProps) {
     setLoading(true);
     try {
       await onDelete(student.id);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReactivate = async () => {
+    setLoading(true);
+    try {
+      await onSave(student.id, { status: "active" });
     } finally {
       setLoading(false);
     }
@@ -75,14 +84,16 @@ export function StudentCard({ student, onSave, onDelete }: StudentCardProps) {
           />
           <select
             value={draft.status}
-            onChange={(event) => setDraft((prev) => ({ ...prev, status: event.target.value }))}
+            onChange={(event) => setDraft((prev) => ({ ...prev, status: event.target.value as StudentStatus }))}
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
           >
             <option value="active">Activo</option>
             <option value="inactive">Inactivo</option>
+            <option value="archived">Archivado</option>
           </select>
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={handleSave}
               disabled={loading || !draft.name}
               className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
@@ -90,6 +101,7 @@ export function StudentCard({ student, onSave, onDelete }: StudentCardProps) {
               Guardar
             </button>
             <button
+              type="button"
               onClick={() => setEditing(false)}
               disabled={loading}
               className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700"
@@ -109,7 +121,9 @@ export function StudentCard({ student, onSave, onDelete }: StudentCardProps) {
               className={
                 student.status === "active"
                   ? "rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700"
-                  : "rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600"
+                  : student.status === "archived"
+                    ? "rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700"
+                    : "rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600"
               }
             >
               {student.status}
@@ -119,19 +133,32 @@ export function StudentCard({ student, onSave, onDelete }: StudentCardProps) {
           <p className="mt-2 text-xs text-slate-500">Inicio: {student.start_date}</p>
           <div className="mt-4 flex gap-2">
             <button
+              type="button"
               onClick={() => setEditing(true)}
               disabled={loading}
               className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700"
             >
               Editar
             </button>
-            <button
-              onClick={handleDelete}
-              disabled={loading}
-              className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700"
-            >
-              Eliminar
-            </button>
+            {student.status === "archived" ? (
+              <button
+                type="button"
+                onClick={handleReactivate}
+                disabled={loading}
+                className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-medium text-emerald-700"
+              >
+                Reactivar
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={loading}
+                className="rounded-lg border border-amber-200 px-3 py-2 text-xs font-medium text-amber-700"
+              >
+                Archivar
+              </button>
+            )}
           </div>
         </div>
       )}

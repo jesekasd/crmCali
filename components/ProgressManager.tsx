@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -285,3 +285,4 @@ export function ProgressManager({ students, entries, chartData, filters, pageSiz
     </section>
   );
 }
+

@@ -1,8 +1,8 @@
 import { getTodayIso } from "@/lib/dashboard/reporting";
 import { getPaginationRange } from "@/lib/search-params";
-import { Payment, ProgressEntry, Student } from "@/types/domain";
+import { Payment, ProgressEntry, Student, StudentStatus } from "@/types/domain";
 
-export type StudentStatusFilter = "all" | "active" | "inactive";
+export type StudentStatusFilter = "all" | StudentStatus;
 export type PaymentStatusFilter = "all" | "pending" | "paid" | "overdue";
 
 interface SupabaseQueryBuilder {
@@ -49,7 +49,9 @@ export async function listCoachStudentsPage(params: {
     .order("created_at", { ascending: false })
     .range(from, to);
 
-  if (status !== "all") {
+  if (status === "all") {
+    query = query.neq("status", "archived");
+  } else {
     query = query.eq("status", status);
   }
 

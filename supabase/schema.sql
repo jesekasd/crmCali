@@ -24,7 +24,7 @@ create table if not exists public.students (
   level text not null check (level in ('beginner', 'intermediate', 'advanced')),
   goal text,
   start_date date not null,
-  status text not null default 'active' check (status in ('active', 'inactive')),
+  status text not null default 'active' check (status in ('active', 'inactive', 'archived')),
   created_at timestamptz not null default now()
 );
 
@@ -247,8 +247,61 @@ as $$
   order by metrics.sort_order
 $$;
 
+create or replace function public.dashboard_summary_stats(
+  p_student_ids uuid[],
+  p_start_date date default null,
+  p_end_date date default null
+)
+returns table (
+  progress_count integer,
+  paid_revenue numeric,
+  pending_revenue numeric,
+  best_pullups integer,
+  best_pushups integer,
+  best_muscle_ups integer,
+  best_handstand integer,
+  coverage_count integer
+)
+language sql
+stable
+set search_path = public
+as $$
+  with progress_filtered as (
+    select *
+    from public.progress
+    where progress.student_id = any(p_student_ids)
+      and (p_start_date is null or progress.date >= p_start_date)
+      and (p_end_date is null or progress.date <= p_end_date)
+  ),
+  payments_filtered as (
+    select *
+    from public.payments
+    where payments.student_id = any(p_student_ids)
+      and (p_start_date is null or payments.date >= p_start_date)
+      and (p_end_date is null or payments.date <= p_end_date)
+  ),
+  coverage as (
+    select count(distinct scoped.student_id)::integer as coverage_count
+    from (
+      select progress_filtered.student_id from progress_filtered
+      union
+      select payments_filtered.student_id from payments_filtered
+    ) scoped
+  )
+  select
+    (select count(*)::integer from progress_filtered) as progress_count,
+    coalesce((select sum(amount) from payments_filtered where status = 'paid'), 0)::numeric as paid_revenue,
+    coalesce((select sum(amount) from payments_filtered where status <> 'paid'), 0)::numeric as pending_revenue,
+    coalesce((select max(pullups) from progress_filtered), 0)::integer as best_pullups,
+    coalesce((select max(pushups) from progress_filtered), 0)::integer as best_pushups,
+    coalesce((select max(muscle_ups) from progress_filtered), 0)::integer as best_muscle_ups,
+    coalesce((select max(handstand_seconds) from progress_filtered), 0)::integer as best_handstand,
+    coalesce((select coverage_count from coverage), 0)::integer as coverage_count
+$$;
+
 grant execute on function public.dashboard_student_summary(uuid[], date, date) to authenticated, service_role;
 grant execute on function public.dashboard_trend_metrics(uuid[], date) to authenticated, service_role;
+grant execute on function public.dashboard_summary_stats(uuid[], date, date) to authenticated, service_role;
 
 -- Auto-provision users + coach profile on signup
 create or replace function public.handle_new_user()

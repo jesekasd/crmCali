@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --require sucrase/register/ts --require tsconfig-paths/register --test tests/search-params.test.ts tests/dashboard-reporting.test.ts tests/dashboard-rpc.test.ts tests/dashboard-export.test.ts tests/coach-queries.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

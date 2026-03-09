@@ -1,4 +1,4 @@
-import { ProgressManager } from "@/components/ProgressManager";
+﻿import { ProgressManager } from "@/components/ProgressManager";
 import { buildChartData, getDateOffset, getTodayIso } from "@/lib/dashboard/reporting";
 import { listCoachProgressPage } from "@/lib/coach/queries";
 import { getCoachContext, getCoachStudents } from "@/lib/supabase/api";
@@ -66,3 +66,4 @@ export default async function ProgressPage({ searchParams }: ProgressPageProps) 
     </section>
   );
 }
+

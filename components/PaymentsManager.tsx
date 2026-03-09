@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -260,3 +260,4 @@ export function PaymentsManager({ students, payments, summary, filters, pageSize
     </section>
   );
 }
+

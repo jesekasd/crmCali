@@ -1,10 +1,10 @@
-import { StudentsManager } from "@/components/StudentsManager";
+﻿import { StudentsManager } from "@/components/StudentsManager";
 import { listCoachStudentsPage, StudentStatusFilter } from "@/lib/coach/queries";
 import { getCoachContext } from "@/lib/supabase/api";
 import { normalizeEnumParam, normalizeTextParam, parsePageParam } from "@/lib/search-params";
 
 const STUDENTS_PAGE_SIZE = 12;
-const STUDENT_STATUS_FILTERS = ["all", "active", "inactive"] as const;
+const STUDENT_STATUS_FILTERS = ["all", "active", "inactive", "archived"] as const;
 
 interface StudentsPageProps {
   searchParams?: { [key: string]: string | string[] | undefined };
@@ -44,3 +44,4 @@ export default async function StudentsPage({ searchParams }: StudentsPageProps) 
     </section>
   );
 }
+

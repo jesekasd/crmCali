@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCoachContext, getCoachStudentIds, getOwnedPayment, getOwnedStudent } from "@/lib/supabase/api";
+import { getCoachContext, getCoachStudentIds, getOwnedOperativeStudent, getOwnedPayment } from "@/lib/supabase/api";
 
 export async function GET() {
   const context = await getCoachContext();
@@ -45,10 +45,10 @@ export async function POST(request: NextRequest) {
   }
 
   const { supabase, coachId } = context;
-  const student = await getOwnedStudent(supabase, coachId, body.studentId);
+  const student = await getOwnedOperativeStudent(supabase, coachId, body.studentId);
 
   if (!student) {
-    return NextResponse.json({ error: "student not found" }, { status: 404 });
+    return NextResponse.json({ error: "student not found or archived" }, { status: 404 });
   }
 
   const { data, error } = await supabase

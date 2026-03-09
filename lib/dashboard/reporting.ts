@@ -53,7 +53,9 @@ export function filterGoals(goals: StudentGoal[], selectedStudentId: string) {
   return goals.filter((goal) => (selectedStudentId === "all" ? true : goal.student_id === selectedStudentId));
 }
 
-export function buildChartData(filteredProgress: ProgressEntry[]): DashboardChartPoint[] {
+export function buildChartData(
+  filteredProgress: Array<Pick<ProgressEntry, "date" | "pullups" | "pushups" | "muscle_ups" | "handstand_seconds">>
+): DashboardChartPoint[] {
   return filteredProgress
     .slice()
     .sort((left, right) => left.date.localeCompare(right.date))

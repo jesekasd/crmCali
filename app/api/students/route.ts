@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCoachContext, getCoachStudents } from "@/lib/supabase/api";
 
-export async function GET() {
+const CREATE_ALLOWED_STATUSES = new Set(["active", "inactive"]);
+
+export async function GET(request: NextRequest) {
   const context = await getCoachContext();
   if ("error" in context) {
     return context.error;
   }
 
   const { supabase, coachId } = context;
-  const students = await getCoachStudents(supabase, coachId);
+  const includeArchived = request.nextUrl.searchParams.get("includeArchived") === "true";
+  const students = await getCoachStudents(supabase, coachId, { includeArchived });
   return NextResponse.json(students);
 }
 
@@ -29,6 +32,10 @@ export async function POST(request: NextRequest) {
 
   if (!name || !level || !start_date) {
     return NextResponse.json({ error: "name, level and start_date are required" }, { status: 400 });
+  }
+
+  if (status && !CREATE_ALLOWED_STATUSES.has(status)) {
+    return NextResponse.json({ error: "invalid status for student creation" }, { status: 400 });
   }
 
   const { supabase, coachId } = context;
