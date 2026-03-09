@@ -210,7 +210,36 @@ export interface Database {
       };
     };
     Views: {};
-    Functions: {};
+    Functions: {
+      dashboard_student_summary: {
+        Args: {
+          p_student_ids: string[];
+          p_start_date?: string | null;
+          p_end_date?: string | null;
+        };
+        Returns: {
+          student_id: string;
+          records: number;
+          latest_date: string | null;
+          best_pullups: number;
+          paid_for_student: number;
+        }[];
+      };
+      dashboard_trend_metrics: {
+        Args: {
+          p_student_ids: string[];
+          p_reference_date?: string;
+        };
+        Returns: {
+          sort_order: number;
+          label: string;
+          current_value: number;
+          previous_value: number;
+          delta_percentage: number | null;
+          format: string;
+        }[];
+      };
+    };
     Enums: {};
     CompositeTypes: {};
   };

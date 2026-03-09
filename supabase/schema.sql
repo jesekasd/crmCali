@@ -100,6 +100,156 @@ as $$
   limit 1
 $$;
 
+create or replace function public.dashboard_student_summary(
+  p_student_ids uuid[],
+  p_start_date date default null,
+  p_end_date date default null
+)
+returns table (
+  student_id uuid,
+  records integer,
+  latest_date date,
+  best_pullups integer,
+  paid_for_student numeric
+)
+language sql
+stable
+set search_path = public
+as $$
+  with progress_filtered as (
+    select
+      progress.student_id,
+      count(*)::integer as records,
+      max(progress.date) as latest_date,
+      max(progress.pullups)::integer as best_pullups
+    from public.progress
+    where progress.student_id = any(p_student_ids)
+      and (p_start_date is null or progress.date >= p_start_date)
+      and (p_end_date is null or progress.date <= p_end_date)
+    group by progress.student_id
+  ),
+  payments_filtered as (
+    select
+      payments.student_id,
+      coalesce(sum(case when payments.status = 'paid' then payments.amount else 0 end), 0)::numeric as paid_for_student
+    from public.payments
+    where payments.student_id = any(p_student_ids)
+      and (p_start_date is null or payments.date >= p_start_date)
+      and (p_end_date is null or payments.date <= p_end_date)
+    group by payments.student_id
+  )
+  select
+    coalesce(progress_filtered.student_id, payments_filtered.student_id) as student_id,
+    coalesce(progress_filtered.records, 0) as records,
+    progress_filtered.latest_date,
+    coalesce(progress_filtered.best_pullups, 0) as best_pullups,
+    coalesce(payments_filtered.paid_for_student, 0)::numeric as paid_for_student
+  from progress_filtered
+  full outer join payments_filtered on payments_filtered.student_id = progress_filtered.student_id
+$$;
+
+create or replace function public.dashboard_trend_metrics(
+  p_student_ids uuid[],
+  p_reference_date date default current_date
+)
+returns table (
+  sort_order integer,
+  label text,
+  current_value numeric,
+  previous_value numeric,
+  delta_percentage numeric,
+  format text
+)
+language sql
+stable
+set search_path = public
+as $$
+  with bounds as (
+    select
+      date_trunc('month', p_reference_date)::date as current_start,
+      (date_trunc('month', p_reference_date) - interval '1 month')::date as previous_start
+  ),
+  payment_agg as (
+    select
+      coalesce(
+        sum(case when payments.status = 'paid' and payments.date >= bounds.current_start and payments.date <= p_reference_date then payments.amount else 0 end),
+        0
+      )::numeric as current_revenue,
+      coalesce(
+        sum(case when payments.status = 'paid' and payments.date >= bounds.previous_start and payments.date < bounds.current_start then payments.amount else 0 end),
+        0
+      )::numeric as previous_revenue
+    from public.payments
+    cross join bounds
+    where payments.student_id = any(p_student_ids)
+      and payments.date >= bounds.previous_start
+      and payments.date <= p_reference_date
+  ),
+  progress_agg as (
+    select
+      count(*) filter (where progress.date >= bounds.current_start and progress.date <= p_reference_date)::numeric as current_records,
+      count(*) filter (where progress.date >= bounds.previous_start and progress.date < bounds.current_start)::numeric as previous_records,
+      coalesce(avg(progress.pullups) filter (where progress.date >= bounds.current_start and progress.date <= p_reference_date), 0)::numeric as current_pullups,
+      coalesce(avg(progress.pullups) filter (where progress.date >= bounds.previous_start and progress.date < bounds.current_start), 0)::numeric as previous_pullups,
+      coalesce(avg(progress.handstand_seconds) filter (where progress.date >= bounds.current_start and progress.date <= p_reference_date), 0)::numeric as current_handstand,
+      coalesce(avg(progress.handstand_seconds) filter (where progress.date >= bounds.previous_start and progress.date < bounds.current_start), 0)::numeric as previous_handstand
+    from public.progress
+    cross join bounds
+    where progress.student_id = any(p_student_ids)
+      and progress.date >= bounds.previous_start
+      and progress.date <= p_reference_date
+  ),
+  metrics as (
+    select
+      1 as sort_order,
+      'Ingresos del mes'::text as label,
+      payment_agg.current_revenue as current_value,
+      payment_agg.previous_revenue as previous_value,
+      'currency'::text as format
+    from payment_agg
+    union all
+    select
+      2,
+      'Registros del mes',
+      progress_agg.current_records,
+      progress_agg.previous_records,
+      'integer'
+    from progress_agg
+    union all
+    select
+      3,
+      'Promedio pullups',
+      progress_agg.current_pullups,
+      progress_agg.previous_pullups,
+      'integer'
+    from progress_agg
+    union all
+    select
+      4,
+      'Promedio handstand',
+      progress_agg.current_handstand,
+      progress_agg.previous_handstand,
+      'seconds'
+    from progress_agg
+  )
+  select
+    metrics.sort_order,
+    metrics.label,
+    metrics.current_value,
+    metrics.previous_value,
+    case
+      when metrics.previous_value = 0 and metrics.current_value = 0 then 0
+      when metrics.previous_value = 0 then null
+      else ((metrics.current_value - metrics.previous_value) / metrics.previous_value) * 100
+    end as delta_percentage,
+    metrics.format
+  from metrics
+  order by metrics.sort_order
+$$;
+
+grant execute on function public.dashboard_student_summary(uuid[], date, date) to authenticated, service_role;
+grant execute on function public.dashboard_trend_metrics(uuid[], date) to authenticated, service_role;
+
 -- Auto-provision users + coach profile on signup
 create or replace function public.handle_new_user()
 returns trigger
