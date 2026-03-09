@@ -12,6 +12,7 @@ import {
 } from "recharts";
 
 interface ProgressChartProps {
+  title?: string;
   data: Array<{
     date: string;
     pullups: number;
@@ -21,10 +22,10 @@ interface ProgressChartProps {
   }>;
 }
 
-export function ProgressChart({ data }: ProgressChartProps) {
+export function ProgressChart({ title = "Evolucion del rendimiento", data }: ProgressChartProps) {
   return (
     <div className="card h-[320px] p-4">
-      <h3 className="mb-4 text-base font-semibold text-slate-900">Evolución del rendimiento</h3>
+      <h3 className="mb-4 text-base font-semibold text-slate-900">{title}</h3>
       <ResponsiveContainer width="100%" height="90%">
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
