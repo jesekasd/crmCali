@@ -126,6 +126,40 @@ export async function getOwnedGoal(supabase: any, coachId: string, goalId: strin
   return goal;
 }
 
+export async function getOwnedStudentSkill(supabase: any, coachId: string, studentSkillId: string) {
+  const { data: studentSkill, error } = await supabase
+    .from("student_skills")
+    .select("*")
+    .eq("id", studentSkillId)
+    .maybeSingle();
+
+  if (error || !studentSkill) {
+    return null;
+  }
+
+  const student = await getOwnedStudent(supabase, coachId, studentSkill.student_id);
+  if (!student) {
+    return null;
+  }
+
+  return studentSkill;
+}
+
+export async function getOwnedOperativeStudentSkill(supabase: any, coachId: string, studentSkillId: string) {
+  const studentSkill = await getOwnedStudentSkill(supabase, coachId, studentSkillId);
+
+  if (!studentSkill) {
+    return null;
+  }
+
+  const student = await getOwnedOperativeStudent(supabase, coachId, studentSkill.student_id);
+  if (!student) {
+    return null;
+  }
+
+  return studentSkill;
+}
+
 export async function getOwnedWorkoutAssignment(supabase: any, coachId: string, assignmentId: string) {
   const { data: assignment, error } = await supabase
     .from("workout_assignments")

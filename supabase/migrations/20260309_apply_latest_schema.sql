@@ -1,68 +1,5 @@
--- Enable UUID support
 create extension if not exists "pgcrypto";
 create extension if not exists "pg_trgm";
-
--- Users profile table (mapped 1:1 to auth.users)
-create table if not exists public.users (
-  id uuid primary key references auth.users(id) on delete cascade,
-  email text not null unique,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.coaches (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null unique references public.users(id) on delete cascade,
-  name text not null,
-  experience integer not null default 0,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.students (
-  id uuid primary key default gen_random_uuid(),
-  coach_id uuid not null references public.coaches(id) on delete cascade,
-  name text not null,
-  level text not null check (level in ('beginner', 'intermediate', 'advanced')),
-  goal text,
-  start_date date not null,
-  status text not null default 'active' check (status in ('active', 'inactive', 'archived')),
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.workouts (
-  id uuid primary key default gen_random_uuid(),
-  coach_id uuid not null references public.coaches(id) on delete cascade,
-  title text not null,
-  description text,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.workout_assignments (
-  id uuid primary key default gen_random_uuid(),
-  workout_id uuid not null references public.workouts(id) on delete cascade,
-  student_id uuid not null references public.students(id) on delete cascade,
-  assigned_at timestamptz not null default now(),
-  unique (workout_id, student_id)
-);
-
-create table if not exists public.progress (
-  id uuid primary key default gen_random_uuid(),
-  student_id uuid not null references public.students(id) on delete cascade,
-  pullups integer not null default 0,
-  pushups integer not null default 0,
-  muscle_ups integer not null default 0,
-  handstand_seconds integer not null default 0,
-  date date not null,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.payments (
-  id uuid primary key default gen_random_uuid(),
-  student_id uuid not null references public.students(id) on delete cascade,
-  amount numeric(10, 2) not null check (amount >= 0),
-  status text not null default 'pending' check (status in ('pending', 'paid', 'overdue')),
-  date date not null,
-  created_at timestamptz not null default now()
-);
 
 create table if not exists public.student_goals (
   id uuid primary key default gen_random_uuid(),
@@ -75,28 +12,34 @@ create table if not exists public.student_goals (
   created_at timestamptz not null default now()
 );
 
-create table if not exists public.student_skills (
-  id uuid primary key default gen_random_uuid(),
-  student_id uuid not null references public.students(id) on delete cascade,
-  skill_slug text not null check (skill_slug in ('handstand', 'muscle_up', 'front_lever', 'planche', 'back_lever', 'l_sit')),
-  current_stage integer not null default 0 check (current_stage >= 0),
-  target_stage integer not null default 0 check (target_stage >= 0),
-  status text not null default 'active' check (status in ('active', 'completed', 'archived')),
-  notes text,
-  started_at date not null default current_date,
-  updated_at timestamptz not null default now(),
-  unique (student_id, skill_slug)
-);
+do $$
+declare
+  existing_constraint text;
+begin
+  select con.conname
+  into existing_constraint
+  from pg_constraint con
+  join pg_class rel on rel.oid = con.conrelid
+  join pg_namespace nsp on nsp.oid = rel.relnamespace
+  where nsp.nspname = 'public'
+    and rel.relname = 'students'
+    and con.contype = 'c'
+    and pg_get_constraintdef(con.oid) ilike '%status%'
+  order by con.conname
+  limit 1;
 
-create table if not exists public.skill_progress_logs (
-  id uuid primary key default gen_random_uuid(),
-  student_skill_id uuid not null references public.student_skills(id) on delete cascade,
-  stage_index integer not null check (stage_index >= 0),
-  readiness_score integer check (readiness_score is null or (readiness_score >= 0 and readiness_score <= 100)),
-  passed boolean not null default false,
-  notes text,
-  created_at timestamptz not null default now()
-);
+  if existing_constraint is not null then
+    execute format('alter table public.students drop constraint %I', existing_constraint);
+  end if;
+end
+$$;
+
+alter table public.students
+  alter column status set default 'active';
+
+alter table public.students
+  add constraint students_status_check
+  check (status in ('active', 'inactive', 'archived'));
 
 create index if not exists idx_students_coach on public.students(coach_id);
 create index if not exists idx_students_coach_status_created on public.students(coach_id, status, created_at desc);
@@ -108,11 +51,7 @@ create index if not exists idx_payments_student_date on public.payments(student_
 create index if not exists idx_payments_student_status_date on public.payments(student_id, status, date desc);
 create index if not exists idx_student_goals_student on public.student_goals(student_id, target_date desc);
 create index if not exists idx_student_goals_student_status_target on public.student_goals(student_id, status, target_date desc);
-create index if not exists idx_student_skills_student_status on public.student_skills(student_id, status, updated_at desc);
-create index if not exists idx_student_skills_skill_slug on public.student_skills(skill_slug, status, updated_at desc);
-create index if not exists idx_skill_progress_logs_skill_created on public.skill_progress_logs(student_skill_id, created_at desc);
 
--- Helper function to resolve coach ID from auth.uid()
 create or replace function public.current_coach_id()
 returns uuid
 language sql
@@ -329,7 +268,6 @@ grant execute on function public.dashboard_student_summary(uuid[], date, date) t
 grant execute on function public.dashboard_trend_metrics(uuid[], date) to authenticated, service_role;
 grant execute on function public.dashboard_summary_stats(uuid[], date, date) to authenticated, service_role;
 
--- Auto-provision users + coach profile on signup
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -362,7 +300,6 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute procedure public.handle_new_user();
 
--- RLS setup
 alter table public.users enable row level security;
 alter table public.coaches enable row level security;
 alter table public.students enable row level security;
@@ -371,10 +308,7 @@ alter table public.workout_assignments enable row level security;
 alter table public.progress enable row level security;
 alter table public.payments enable row level security;
 alter table public.student_goals enable row level security;
-alter table public.student_skills enable row level security;
-alter table public.skill_progress_logs enable row level security;
 
--- users
 drop policy if exists "users_select_own" on public.users;
 create policy "users_select_own" on public.users
 for select using (id = auth.uid());
@@ -383,28 +317,24 @@ drop policy if exists "users_update_own" on public.users;
 create policy "users_update_own" on public.users
 for update using (id = auth.uid());
 
--- coaches
 drop policy if exists "coaches_manage_own" on public.coaches;
 create policy "coaches_manage_own" on public.coaches
 for all
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
 
--- students
 drop policy if exists "students_manage_own" on public.students;
 create policy "students_manage_own" on public.students
 for all
 using (coach_id = public.current_coach_id())
 with check (coach_id = public.current_coach_id());
 
--- workouts
 drop policy if exists "workouts_manage_own" on public.workouts;
 create policy "workouts_manage_own" on public.workouts
 for all
 using (coach_id = public.current_coach_id())
 with check (coach_id = public.current_coach_id());
 
--- workout assignments
 drop policy if exists "assignments_manage_own" on public.workout_assignments;
 create policy "assignments_manage_own" on public.workout_assignments
 for all
@@ -431,7 +361,6 @@ with check (
   )
 );
 
--- progress
 drop policy if exists "progress_manage_own" on public.progress;
 create policy "progress_manage_own" on public.progress
 for all
@@ -452,7 +381,6 @@ with check (
   )
 );
 
--- payments
 drop policy if exists "payments_manage_own" on public.payments;
 create policy "payments_manage_own" on public.payments
 for all
@@ -473,7 +401,6 @@ with check (
   )
 );
 
--- student goals
 drop policy if exists "student_goals_manage_own" on public.student_goals;
 create policy "student_goals_manage_own" on public.student_goals
 for all
@@ -490,48 +417,6 @@ with check (
     select 1
     from public.students s
     where s.id = student_id
-      and s.coach_id = public.current_coach_id()
-  )
-);
-
-drop policy if exists "student_skills_manage_own" on public.student_skills;
-create policy "student_skills_manage_own" on public.student_skills
-for all
-using (
-  exists (
-    select 1
-    from public.students s
-    where s.id = student_id
-      and s.coach_id = public.current_coach_id()
-  )
-)
-with check (
-  exists (
-    select 1
-    from public.students s
-    where s.id = student_id
-      and s.coach_id = public.current_coach_id()
-  )
-);
-
-drop policy if exists "skill_progress_logs_manage_own" on public.skill_progress_logs;
-create policy "skill_progress_logs_manage_own" on public.skill_progress_logs
-for all
-using (
-  exists (
-    select 1
-    from public.student_skills ss
-    join public.students s on s.id = ss.student_id
-    where ss.id = student_skill_id
-      and s.coach_id = public.current_coach_id()
-  )
-)
-with check (
-  exists (
-    select 1
-    from public.student_skills ss
-    join public.students s on s.id = ss.student_id
-    where ss.id = student_skill_id
       and s.coach_id = public.current_coach_id()
   )
 );

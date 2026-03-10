@@ -208,6 +208,70 @@ export interface Database {
         };
         Relationships: [];
       };
+      student_skills: {
+        Row: {
+          id: string;
+          student_id: string;
+          skill_slug: string;
+          current_stage: number;
+          target_stage: number;
+          status: string;
+          notes: string | null;
+          started_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          student_id: string;
+          skill_slug: string;
+          current_stage?: number;
+          target_stage?: number;
+          status?: string;
+          notes?: string | null;
+          started_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          student_id?: string;
+          skill_slug?: string;
+          current_stage?: number;
+          target_stage?: number;
+          status?: string;
+          notes?: string | null;
+          started_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      skill_progress_logs: {
+        Row: {
+          id: string;
+          student_skill_id: string;
+          stage_index: number;
+          readiness_score: number | null;
+          passed: boolean;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          student_skill_id: string;
+          stage_index: number;
+          readiness_score?: number | null;
+          passed?: boolean;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          student_skill_id?: string;
+          stage_index?: number;
+          readiness_score?: number | null;
+          passed?: boolean;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {};
     Functions: {

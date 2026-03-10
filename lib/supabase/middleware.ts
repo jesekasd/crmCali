@@ -1,7 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 
-const protectedRoutes = ["/dashboard", "/students", "/workouts", "/progress", "/payments"];
+const protectedRoutes = ["/dashboard", "/students", "/skills", "/workouts", "/progress", "/payments"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });

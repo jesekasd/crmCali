@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, CreditCard, Dumbbell, LayoutDashboard, Users } from "lucide-react";
+import { BarChart3, CreditCard, Dumbbell, LayoutDashboard, Target, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const links = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/students", label: "Alumnos", icon: Users },
+  { href: "/skills", label: "Skills", icon: Target },
   { href: "/workouts", label: "Rutinas", icon: Dumbbell },
   { href: "/progress", label: "Progreso", icon: BarChart3 },
   { href: "/payments", label: "Pagos", icon: CreditCard }
